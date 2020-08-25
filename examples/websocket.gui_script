@@ -60,9 +60,13 @@ local function websocket_callback(self, conn, data)
 	if data.event == websocket.EVENT_DISCONNECTED then
 		self.connection = nil
 		update_buttons(self)
+		if data.error then
+			log("Diconnect error:", data.error)
+			self.connection = nil
+		end
 	elseif data.event == websocket.EVENT_CONNECTED then
 		if data.error then
-			log("on_connected error", data.error)
+			log("Connection error:", data.error)
 			self.connection = nil
 		end
 		update_buttons(self)
@@ -83,11 +87,9 @@ local function connect(self, scheme)
 	local url = scheme .. URL
 
 	log("Connecting to " .. url)
-	local conn, err = websocket.connect(url, params, websocket_callback)
-	if conn == nil then
+	self.connection = websocket.connect(url, params, websocket_callback)
+	if self.connection == nil then
 		print("Failed to connect to " .. url .. ": " .. err)
-	else
-		self.connection = conn
 	end
 end
 
