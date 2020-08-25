@@ -8,3 +8,6 @@ Thumbs.db
 .project
 .cproject
 builtins
+lws_source
+lws_build
+*.profraw
