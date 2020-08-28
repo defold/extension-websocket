@@ -5,10 +5,10 @@
 
 #include <wslay/wslay.h>
 
-#include "dmsdk/connection_pool.h"
-#include "dmsdk/socket.h"
-#include "dmsdk/dns.h"
-#include "dmsdk/uri.h"
+#include <dmsdk/dlib/connection_pool.h>
+#include <dmsdk/dlib/socket.h>
+#include <dmsdk/dlib/dns.h>
+#include <dmsdk/dlib/uri.h>
 
 namespace dmCrypt
 {
@@ -49,6 +49,7 @@ namespace dmWebsocket
         dmURI::Parts                    m_Url;
         dmConnectionPool::HConnection   m_Connection;
         dmSocket::Socket                m_Socket;
+        dmSSLSocket::Socket             m_SSLSocket;
         uint8_t                         m_Key[16];
         State                           m_State;
         uint32_t                        m_SSL:1;

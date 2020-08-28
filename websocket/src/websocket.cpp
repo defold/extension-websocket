@@ -5,45 +5,9 @@
 #define MODULE_NAME "websocket"
 
 #include "websocket.h"
-
-
 #include "script_util.h"
-
-
-// *****************************************************************************************************************************************************************
-// DMSDK
-
-extern "C" int mbedtls_base64_encode( unsigned char *dst, size_t dlen, size_t *olen, const unsigned char *src, size_t slen );
-extern "C" int mbedtls_base64_decode( unsigned char *dst, size_t dlen, size_t *olen, const unsigned char *src, size_t slen );
-
-// TODO: MOVE TO DMSDK
-bool dmCrypt::Base64Encode(const uint8_t* src, uint32_t src_len, uint8_t* dst, uint32_t* dst_len)
-{
-    size_t out_len = 0;
-    int r = mbedtls_base64_encode(dst, *dst_len, &out_len, src, src_len);
-    if (r != 0)
-    {
-        *dst_len = 0xFFFFFFFF;
-        return false;
-    }
-    *dst_len = (uint32_t)out_len;
-    return true;
-}
-
-bool dmCrypt::Base64Decode(const uint8_t* src, uint32_t src_len, uint8_t* dst, uint32_t* dst_len)
-{
-    size_t out_len = 0;
-    int r = mbedtls_base64_decode(dst, *dst_len, &out_len, src, src_len);
-    if (r != 0)
-    {
-        *dst_len = 0xFFFFFFFF;
-        return false;
-    }
-    *dst_len = (uint32_t)out_len;
-    return true;
-}
-
-// *****************************************************************************************************************************************************************
+#include <dmsdk/dlib/connection_pool.h>
+#include <dmsdk/dlib/dns.h>
 
 namespace dmWebsocket {
 
@@ -75,17 +39,6 @@ Result SetStatus(WebsocketConnection* conn, Result status, const char* format, .
 
 // ***************************************************************************************************
 // LUA functions
-
-    // struct wslay_event_msg msg; // Should I use fragmented?
-    // msg.opcode = write_mode == WRITE_MODE_TEXT ? WSLAY_TEXT_FRAME : WSLAY_BINARY_FRAME;
-    // msg.msg = p_buffer;
-    // msg.msg_length = p_buffer_size;
-
-    // wslay_event_queue_msg(_data->ctx, &msg);
-    // if (wslay_event_send(_data->ctx) < 0) {
-    //     close_now();
-    //     return FAILED;
-    // }
 
 const struct wslay_event_callbacks g_WslCallbacks = {
     WSL_RecvCallback,
@@ -332,7 +285,7 @@ static void LuaInit(lua_State* L)
 static dmExtension::Result WebsocketAppInitialize(dmExtension::AppParams* params)
 {
     g_Websocket.m_BufferSize = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.buffer_size", 64 * 1024);
-    g_Websocket.m_Timeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.socket_timeout", 250 * 1000);
+    g_Websocket.m_Timeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.socket_timeout", 500 * 1000);
     g_Websocket.m_Connections.SetCapacity(4);
     g_Websocket.m_Channel = 0;
     g_Websocket.m_Pool = 0;
@@ -350,7 +303,7 @@ static dmExtension::Result WebsocketAppInitialize(dmExtension::AppParams* params
 
     if (dmDNS::RESULT_OK != dns_result)
     {
-        dmLogError("Failed to create connection pool: %s", dmDNS::ResultToString(dns_result));
+        dmLogError("Failed to create connection pool: %d", dns_result);
     }
 
     g_Websocket.m_Initialized = 1;
@@ -380,6 +333,8 @@ static dmExtension::Result WebsocketInitialize(dmExtension::Params* params)
 
 static dmExtension::Result WebsocketAppFinalize(dmExtension::AppParams* params)
 {
+
+    dmConnectionPool::Shutdown(g_Websocket.m_Pool, dmSocket::SHUTDOWNTYPE_READWRITE);
     return dmExtension::RESULT_OK;
 }
 
@@ -491,6 +446,7 @@ static dmExtension::Result WebsocketOnUpdate(dmExtension::Params* params)
             }
 
             conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
+            conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
             conn->m_State = STATE_HANDSHAKE;
         }
     }

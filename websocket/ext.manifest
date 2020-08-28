@@ -5,4 +5,4 @@ platforms:
     common:
         context:
             includes:   ["upload/websocket/include/wslay"]
-            defines:    ["FOO"]
+            defines:    ["HAVE_CONFIG_H"]

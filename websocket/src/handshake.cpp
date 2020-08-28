@@ -1,19 +1,10 @@
 #include "websocket.h"
-#include "dmsdk/socket.h"
+#include <dmsdk/dlib/socket.h>
 
 namespace dmWebsocket
 {
 
 const char* RFC_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"; // as per the rfc document on page 7 (https://tools.ietf.org/html/rfc6455)
-
-
-static void printHex(const uint8_t* data, size_t len)
-{
-    for (int i = 0; i < 16; ++i)
-    {
-        printf("%x", data[i]);
-    }
-}
 
 static void CreateKey(uint8_t* key, size_t len)
 {
@@ -38,18 +29,10 @@ Result SendClientHandshake(WebsocketConnection* conn)
     char encoded_key[64] = {0};
     uint32_t encoded_key_len = sizeof(encoded_key);
 
-    //mbedtls_base64_encode((unsigned char*)encoded_key, sizeof(encoded_key), &encoded_key_len, (const unsigned char*)conn->m_Key, sizeof(conn->m_Key));
     if (!dmCrypt::Base64Encode((const unsigned char*)conn->m_Key, sizeof(conn->m_Key), (unsigned char*)encoded_key, &encoded_key_len))
     {
         return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Failed to base64 encode key");
     }
-
-
-printf("DBG: CreateKey: '");
-printHex((const uint8_t*)conn->m_Key, 16);
-printf("'\n");
-
-printf("DBG: encoded: '%s'\n", encoded_key);
 
     char port[8] = "";
     if (!(conn->m_Url.m_Port == 80 || conn->m_Url.m_Port == 443))
@@ -88,26 +71,6 @@ bail:
 #undef WS_SENDALL
 
 
-void debugPrintBuffer(const char* s, size_t len)
-{
-    for (int i = 0; i < len; ++i)
-    {
-        const char* p = s + i;
-        if (*p == '\r') {
-            printf("\\r");
-        }
-        else if (*p == '\n') {
-            printf("\\n\n");
-        }
-        else if (*p == '\t') {
-            printf("\t");
-        }
-        else {
-            printf("%c", *p);
-        }
-    }
-}
-
 // Currently blocking!
 Result ReceiveHeaders(WebsocketConnection* conn)
 {
@@ -136,8 +99,6 @@ Result ReceiveHeaders(WebsocketConnection* conn)
             return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Receive error: %s", dmSocket::ResultToString(r));
         }
 
-debugPrintBuffer(conn->m_Buffer + conn->m_BufferSize, recv_bytes);
-
         conn->m_BufferSize += recv_bytes;
 
         // NOTE: We have an extra byte for null-termination so no buffer overrun here.
@@ -159,8 +120,6 @@ debugPrintBuffer(conn->m_Buffer + conn->m_BufferSize, recv_bytes);
 Result VerifyHeaders(WebsocketConnection* conn)
 {
     char* r = conn->m_Buffer;
-
-    printf("SERVER RESPONSE:\n%s\n", r);
 
     const char* http_version_and_status_protocol = "HTTP/1.1 101"; // optionally "Web Socket Protocol Handshake"
     if (strstr(r, http_version_and_status_protocol) != r) {
@@ -189,8 +148,6 @@ Result VerifyHeaders(WebsocketConnection* conn)
         *r = 0;
         r += 2;
 
-printf("KEY: '%s', VALUE: '%s'\n", key, value);
-
         if (strcmp(key, "Connection") == 0 && strcmp(value, "Upgrade") == 0)
             upgraded = true;
         else if (strcmp(key, "Sec-WebSocket-Accept") == 0)
@@ -216,8 +173,6 @@ printf("KEY: '%s', VALUE: '%s'\n", key, value);
 
             if (strcmp(value, (const char*)client_key) == 0)
                 valid_key = true;
-
-printf("DBG: CLIENT KEY+MAGIC: '%s'\n", client_key);
         }
 
         if (strcmp(r, "\r\n") == 0)
