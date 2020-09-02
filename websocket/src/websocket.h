@@ -79,7 +79,7 @@ namespace dmWebsocket
 #ifdef __GNUC__
     Result SetStatus(WebsocketConnection* conn, Result status, const char* fmt, ...) __attribute__ ((format (printf, 3, 4)));
 #else
-    Result SetStatus(WebsocketCOnnection* conn, Result status, const char* fmt, ...);
+    Result SetStatus(WebsocketConnection* conn, Result status, const char* fmt, ...);
 #endif
 
     // Communication

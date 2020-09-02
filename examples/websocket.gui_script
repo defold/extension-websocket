@@ -57,22 +57,14 @@ end
 
 local function websocket_callback(self, conn, data)
 	if data.event == websocket.EVENT_DISCONNECTED then
+		log("Disconnected: " .. tostring(conn))
 		self.connection = nil
 		update_gui(self)
-		if data.error then
-			log("Diconnect error:", data.error)
-			self.connection = nil
-		end
 	elseif data.event == websocket.EVENT_CONNECTED then
-		if data.error then
-			log("Connection error:", data.error)
-			self.connection = nil
-		end
 		update_gui(self)
+		log("Connected: " .. tostring(conn))
 	elseif data.event == websocket.EVENT_ERROR then
-		if data.error then
-			log("Error:", data.error)
-		end
+		log("Error: '" .. data.error .. "'")
 	elseif data.event == websocket.EVENT_MESSAGE then
 		log("Receiving: '" .. tostring(data.message) .. "'")
 	end
@@ -84,9 +76,6 @@ local function connect(self, scheme)
 	self.url = scheme .. URL
 	log("Connecting to " .. self.url)
 	self.connection = websocket.connect(self.url, params, websocket_callback)
-	if self.connection == nil then
-		print("Failed to connect to " .. self.url .. ": " .. err)
-	end
 end
 
 local function disconnect(self)

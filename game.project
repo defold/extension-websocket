@@ -5,8 +5,8 @@ main_collection = /examples/websocket.collectionc
 shared_state = 1
 
 [display]
-width = 960
-height = 640
+width = 640
+height = 960
 
 [project]
 title = extension-websocket
