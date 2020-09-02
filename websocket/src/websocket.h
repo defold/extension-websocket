@@ -3,7 +3,13 @@
 // include the Defold SDK
 #include <dmsdk/sdk.h>
 
-#include <wslay/wslay.h>
+#if !defined(__EMSCRIPTEN__)
+    #define HAVE_WSLAY 1
+#endif
+
+#if defined(HAVE_WSLAY)
+    #include <wslay/wslay.h>
+#endif
 
 #include <dmsdk/dlib/connection_pool.h>
 #include <dmsdk/dlib/socket.h>
@@ -19,10 +25,14 @@ namespace dmCrypt
 
 namespace dmWebsocket
 {
+    // Maximum time to wait for a socket
+    static const int SOCKET_WAIT_TIMEOUT = 4*1000;
+
     enum State
     {
         STATE_CONNECTING,
-        STATE_HANDSHAKE,
+        STATE_HANDSHAKE_WRITE,
+        STATE_HANDSHAKE_READ,
         STATE_CONNECTED,
         STATE_DISCONNECTED,
     };
@@ -30,9 +40,11 @@ namespace dmWebsocket
     enum Result
     {
         RESULT_OK,
+        RESULT_ERROR,
         RESULT_FAIL_WSLAY_INIT,
         RESULT_NOT_CONNECTED,
         RESULT_HANDSHAKE_FAILED,
+        RESULT_WOULDBLOCK,
     };
 
     enum Event
@@ -40,12 +52,15 @@ namespace dmWebsocket
         EVENT_CONNECTED,
         EVENT_DISCONNECTED,
         EVENT_MESSAGE,
+        EVENT_ERROR,
     };
 
     struct WebsocketConnection
     {
         dmScript::LuaCallbackInfo*      m_Callback;
+#if defined(HAVE_WSLAY)
         wslay_event_context_ptr         m_Ctx;
+#endif
         dmURI::Parts                    m_Url;
         dmConnectionPool::HConnection   m_Connection;
         dmSocket::Socket                m_Socket;
@@ -70,17 +85,26 @@ namespace dmWebsocket
     // Communication
     dmSocket::Result Send(WebsocketConnection* conn, const char* buffer, int length, int* out_sent_bytes);
     dmSocket::Result Receive(WebsocketConnection* conn, void* buffer, int length, int* received_bytes);
+    dmSocket::Result WaitForSocket(WebsocketConnection* conn, dmSocket::SelectorKind kind, int timeout);
 
     // Handshake
     Result SendClientHandshake(WebsocketConnection* conn);
     Result ReceiveHeaders(WebsocketConnection* conn);
     Result VerifyHeaders(WebsocketConnection* conn);
 
+#if defined(HAVE_WSLAY)
     // Wslay callbacks
+    int     WSL_Init(wslay_event_context_ptr* ctx, ssize_t buffer_size, void* userctx);
+    void    WSL_Exit(wslay_event_context_ptr ctx);
+    int     WSL_Close(wslay_event_context_ptr ctx);
+    int     WSL_Poll(wslay_event_context_ptr ctx);
+    int     WSL_WantsExit(wslay_event_context_ptr ctx);
     ssize_t WSL_RecvCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, int flags, void *user_data);
     ssize_t WSL_SendCallback(wslay_event_context_ptr ctx, const uint8_t *data, size_t len, int flags, void *user_data);
     void    WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event_on_msg_recv_arg *arg, void *user_data);
     int     WSL_GenmaskCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, void *user_data);
+    const char* WSL_ResultToString(int err);
+#endif
 
     // Random numbers (PCG)
     typedef struct { uint64_t state;  uint64_t inc; } pcg32_random_t;

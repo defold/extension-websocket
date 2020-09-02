@@ -5,6 +5,14 @@
 namespace dmWebsocket
 {
 
+dmSocket::Result WaitForSocket(WebsocketConnection* conn, dmSocket::SelectorKind kind, int timeout)
+{
+    dmSocket::Selector selector;
+    dmSocket::SelectorZero(&selector);
+    dmSocket::SelectorSet(&selector, kind, conn->m_Socket);
+    return dmSocket::Select(&selector, timeout);
+}
+
 dmSocket::Result Send(WebsocketConnection* conn, const char* buffer, int length, int* out_sent_bytes)
 {
     int total_sent_bytes = 0;

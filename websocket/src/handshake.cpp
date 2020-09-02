@@ -16,13 +16,13 @@ static void CreateKey(uint8_t* key, size_t len)
 }
 
 #define WS_SENDALL(s) \
-    sock_res = Send(conn, s, strlen(s), 0);\
-    if (sock_res != dmSocket::RESULT_OK)\
+    sr = Send(conn, s, strlen(s), 0);\
+    if (sr != dmSocket::RESULT_OK)\
     {\
         goto bail;\
     }\
 
-Result SendClientHandshake(WebsocketConnection* conn)
+static Result SendClientHandshakeHeaders(WebsocketConnection* conn)
 {
     CreateKey(conn->m_Key, sizeof(conn->m_Key));
 
@@ -38,7 +38,7 @@ Result SendClientHandshake(WebsocketConnection* conn)
     if (!(conn->m_Url.m_Port == 80 || conn->m_Url.m_Port == 443))
         dmSnPrintf(port, sizeof(port), ":%d", conn->m_Url.m_Port);
 
-    dmSocket::Result sock_res = dmSocket::RESULT_OK;
+    dmSocket::Result sr;
     WS_SENDALL("GET /");
     WS_SENDALL(conn->m_Url.m_Path);
     WS_SENDALL(" HTTP/1.1\r\n");
@@ -60,9 +60,9 @@ Result SendClientHandshake(WebsocketConnection* conn)
     WS_SENDALL("\r\n");
 
 bail:
-    if (sock_res != dmSocket::RESULT_OK)
+    if (sr != dmSocket::RESULT_OK)
     {
-        return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "SendClientHandshake failed: %s", dmSocket::ResultToString(sock_res));
+        return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "SendClientHandshake failed: %s", dmSocket::ResultToString(sr));
     }
 
     return RESULT_OK;
@@ -70,68 +70,114 @@ bail:
 
 #undef WS_SENDALL
 
-
-// Currently blocking!
-Result ReceiveHeaders(WebsocketConnection* conn)
+Result SendClientHandshake(WebsocketConnection* conn)
 {
-    while (1)
+    dmSocket::Result sr = WaitForSocket(conn, dmSocket::SELECTOR_KIND_WRITE, SOCKET_WAIT_TIMEOUT);
+    if (dmSocket::RESULT_WOULDBLOCK == sr)
     {
-        int max_to_recv = (int)(conn->m_BufferCapacity - 1) - conn->m_BufferSize; // allow for a terminating null character
-
-        if (max_to_recv <= 0)
-        {
-            return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Receive buffer full: %u bytes", conn->m_BufferCapacity);
-        }
-
-        int recv_bytes = 0;
-        dmSocket::Result r = Receive(conn, conn->m_Buffer + conn->m_BufferSize, max_to_recv, &recv_bytes);
-
-        if( r == dmSocket::RESULT_WOULDBLOCK )
-        {
-            r = dmSocket::RESULT_TRY_AGAIN;
-        }
-
-        if (r == dmSocket::RESULT_TRY_AGAIN)
-            continue;
-
-        if (r != dmSocket::RESULT_OK)
-        {
-            return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Receive error: %s", dmSocket::ResultToString(r));
-        }
-
-        conn->m_BufferSize += recv_bytes;
-
-        // NOTE: We have an extra byte for null-termination so no buffer overrun here.
-        conn->m_Buffer[conn->m_BufferSize] = '\0';
-
-        // Check if the end of the response has arrived
-        if (conn->m_BufferSize >= 4 && strcmp(conn->m_Buffer + conn->m_BufferSize - 4, "\r\n\r\n") == 0)
-        {
-            return RESULT_OK;
-        }
-
-        if (r == 0)
-        {
-            return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Failed to parse headers:\n%s", conn->m_Buffer);
-        }
+        return RESULT_WOULDBLOCK;
     }
+    if (dmSocket::RESULT_OK != sr)
+    {
+        return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Connection not ready for sending data: %s", dmSocket::ResultToString(sr));
+    }
+
+// In emscripten, the sockets are actually already websockets, so no handshake necessary
+#if defined(__EMSCRIPTEN__)
+    return RESULT_OK;
+#else
+    return SendClientHandshakeHeaders(conn);
+#endif
 }
 
+
+#if defined(__EMSCRIPTEN__)
+Result ReceiveHeaders(WebsocketConnection* conn)
+{
+    return RESULT_OK;
+}
+
+#else
+Result ReceiveHeaders(WebsocketConnection* conn)
+{
+    dmSocket::Selector selector;
+    dmSocket::SelectorZero(&selector);
+    dmSocket::SelectorSet(&selector, dmSocket::SELECTOR_KIND_READ, conn->m_Socket);
+
+    dmSocket::Result sr = dmSocket::Select(&selector, 200*1000);
+
+    if (dmSocket::RESULT_OK != sr)
+    {
+        if (dmSocket::RESULT_WOULDBLOCK)
+        {
+            dmLogWarning("Waiting for socket to be available for reading");
+            return RESULT_WOULDBLOCK;
+        }
+
+        return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Failed waiting for more handshake headers: %s", dmSocket::ResultToString(sr));
+    }
+
+    int max_to_recv = (int)(conn->m_BufferCapacity - 1) - conn->m_BufferSize; // allow for a terminating null character
+
+    if (max_to_recv <= 0)
+    {
+        return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Receive buffer full: %u bytes", conn->m_BufferCapacity);
+    }
+
+    int recv_bytes = 0;
+    sr = Receive(conn, conn->m_Buffer + conn->m_BufferSize, max_to_recv, &recv_bytes);
+
+    if( sr == dmSocket::RESULT_WOULDBLOCK )
+    {
+        sr = dmSocket::RESULT_TRY_AGAIN;
+    }
+
+    if (sr == dmSocket::RESULT_TRY_AGAIN)
+        return RESULT_WOULDBLOCK;
+
+    if (sr != dmSocket::RESULT_OK)
+    {
+        return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Receive error: %s", dmSocket::ResultToString(sr));
+    }
+
+    conn->m_BufferSize += recv_bytes;
+
+    // NOTE: We have an extra byte for null-termination so no buffer overrun here.
+    conn->m_Buffer[conn->m_BufferSize] = '\0';
+
+    // Check if the end of the response has arrived
+    if (conn->m_BufferSize >= 4 && strcmp(conn->m_Buffer + conn->m_BufferSize - 4, "\r\n\r\n") == 0)
+    {
+        return RESULT_OK;
+    }
+
+    return RESULT_WOULDBLOCK;
+}
+#endif
+
+#if defined(__EMSCRIPTEN__)
+Result VerifyHeaders(WebsocketConnection* conn)
+{
+    return RESULT_OK;
+}
+#else
 Result VerifyHeaders(WebsocketConnection* conn)
 {
     char* r = conn->m_Buffer;
 
-    const char* http_version_and_status_protocol = "HTTP/1.1 101"; // optionally "Web Socket Protocol Handshake"
+    // According to protocol, the response should start with "HTTP/1.1 <statuscode> <message>"
+    const char* http_version_and_status_protocol = "HTTP/1.1 101";
     if (strstr(r, http_version_and_status_protocol) != r) {
         return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Missing: '%s' in header", http_version_and_status_protocol);
     }
+
     r = strstr(r, "\r\n") + 2;
 
     bool upgraded = false;
     bool valid_key = false;
     const char* protocol = "";
 
-    // Sec-WebSocket-Protocol
+    // TODO: Perhaps also support the Sec-WebSocket-Protocol
 
     // parse the headers in place
     while (r)
@@ -155,7 +201,6 @@ Result VerifyHeaders(WebsocketConnection* conn)
 
             uint8_t client_key[32 + 40];
             uint32_t client_key_len = sizeof(client_key);
-            //mbedtls_base64_encode((unsigned char*)client_key, sizeof(client_key), &client_key_len, (const unsigned char*)conn->m_Key, sizeof(conn->m_Key));
             dmCrypt::Base64Encode(conn->m_Key, sizeof(conn->m_Key), client_key, &client_key_len);
             client_key[client_key_len] = 0;
 
@@ -166,7 +211,6 @@ Result VerifyHeaders(WebsocketConnection* conn)
             uint8_t client_key_sha1[20];
             dmCrypt::HashSha1(client_key, client_key_len, client_key_sha1);
 
-            //mbedtls_base64_encode((unsigned char*)client_key, sizeof(client_key), &client_key_len, client_key_sha1, sizeof(client_key_sha1));
             client_key_len = sizeof(client_key);
             dmCrypt::Base64Encode(client_key_sha1, sizeof(client_key_sha1), client_key, &client_key_len);
             client_key[client_key_len] = 0;
@@ -179,7 +223,17 @@ Result VerifyHeaders(WebsocketConnection* conn)
             break;
     }
 
+    if (!upgraded)
+        dmLogError("Failed to find the Upgrade keyword in the response headers");
+    if (!valid_key)
+        dmLogError("Failed to find valid key in the response headers");
+
+    if (!(upgraded && valid_key)) {
+        dmLogError("Response:\n\"%s\"\n", conn->m_Buffer);
+    }
+
     return (upgraded && valid_key) ? RESULT_OK : RESULT_HANDSHAKE_FAILED;
 }
+#endif
 
 } // namespace
