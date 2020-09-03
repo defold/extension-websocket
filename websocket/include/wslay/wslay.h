@@ -33,6 +33,14 @@ extern "C" {
 #include <stdlib.h>
 #include <sys/types.h>
 
+// Defold addition
+#if defined(_WIN32)
+  #if defined(_WIN64)
+    typedef int64_t ssize_t;
+  #else
+    typedef int32_t ssize_t;
+  #endif
+#endif
 
 /*
  * wslay/wslayver.h is generated from wslay/wslayver.h.in by
