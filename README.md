@@ -1,4 +1,12 @@
-# Native extension template
-This template contains the basic setup for creation of a Defold native extension.
+# Defold websocket extension
 
-You can learn more about native extensions in the [official manual](https://www.defold.com/manuals/extensions/).
+## Installation
+To use this library in your Defold project, add the following URL to your `game.project` dependencies:
+
+https://github.com/defold/extension-websocket/archive/master.zip
+
+We recommend using a link to a zip file of a [specific release](https://github.com/defold/extension-websocket/releases).
+
+## API reference
+
+https://defold.com/extension-websocket/api/
