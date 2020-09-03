@@ -1,0 +1,8 @@
+# C++ symbol in your extension
+name: "Websocket"
+
+platforms:
+    common:
+        context:
+            includes:   ["upload/websocket/include/wslay"]
+            defines:    ["HAVE_CONFIG_H"]

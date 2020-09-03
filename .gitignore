@@ -1,5 +1,6 @@
 /.internal
 /build
+/bundle*
 .externalToolBuilders
 .DS_Store
 Thumbs.db
@@ -8,3 +9,6 @@ Thumbs.db
 .project
 .cproject
 builtins
+lws_source
+lws_build
+*.profraw

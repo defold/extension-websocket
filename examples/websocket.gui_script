@@ -1,0 +1,104 @@
+local URL="://echo.websocket.org"
+
+local function click_button(node, action)
+	return gui.is_enabled(node) and action.pressed and gui.pick_node(node, action.x, action.y)
+end
+
+local function update_gui(self)
+	if self.connection then
+		gui.set_enabled(self.connect_ws_node, false)
+		gui.set_enabled(self.connect_wss_node, false)
+		gui.set_enabled(self.send_node, true)
+		gui.set_enabled(self.close_node, true)
+		gui.set_enabled(self.connection_text, true)
+		gui.set_text(self.connection_text, "Connected to " .. self.url)
+	else
+		gui.set_enabled(self.connect_ws_node, true)
+		gui.set_enabled(self.connect_wss_node, true)
+		gui.set_enabled(self.send_node, false)
+		gui.set_enabled(self.close_node, false)
+		gui.set_enabled(self.connection_text, false)
+	end
+end
+
+local function log(...)
+	local text = ""
+	local len = select("#", ...)
+	for i=1,len  do
+		text = text .. tostring(select(i, ...)) .. (i == len and "" or ", ")
+	end
+
+	print(text)
+	local node = gui.get_node("log")
+	gui.set_text(node, gui.get_text(node) .. "\n" .. text)
+end
+
+function init(self)
+	msg.post(".", "acquire_input_focus")
+	msg.post("@render:", "clear_color", { color = vmath.vector4(0.2, 0.4, 0.8, 1.0) })
+	self.connect_ws_node = gui.get_node("connect_ws/button")
+	self.connect_wss_node = gui.get_node("connect_wss/button")
+	self.send_node = gui.get_node("send/button")
+	self.close_node = gui.get_node("close/button")
+	self.connection_text = gui.get_node("connection_text")
+	self.connection = nil
+	update_gui(self)
+end
+
+function final(self)
+	msg.post(".", "release_input_focus")
+end
+
+function update(self, dt)
+	if self.ws then
+		self.ws.step()
+	end
+end
+
+local function websocket_callback(self, conn, data)
+	if data.event == websocket.EVENT_DISCONNECTED then
+		log("Disconnected: " .. tostring(conn))
+		self.connection = nil
+		update_gui(self)
+	elseif data.event == websocket.EVENT_CONNECTED then
+		update_gui(self)
+		log("Connected: " .. tostring(conn))
+	elseif data.event == websocket.EVENT_ERROR then
+		log("Error: '" .. data.error .. "'")
+	elseif data.event == websocket.EVENT_MESSAGE then
+		log("Receiving: '" .. tostring(data.message) .. "'")
+	end
+end
+
+local function connect(self, scheme)
+	local params = {}
+
+	self.url = scheme .. URL
+	log("Connecting to " .. self.url)
+	self.connection = websocket.connect(self.url, params, websocket_callback)
+end
+
+local function disconnect(self)
+	if self.connection ~= nil then
+		websocket.disconnect(self.connection)
+	end
+	self.connection = nil
+end
+
+
+function on_input(self, action_id, action)
+	if click_button(self.connect_ws_node, action) then
+		connect(self, "ws")
+	elseif click_button(self.connect_wss_node, action) then
+		connect(self, "wss")
+	elseif click_button(self.close_node, action) then
+		disconnect(self)
+	elseif click_button(gui.get_node("send/button"), action) then
+		local message_to_send = 'sending to server'
+		local ok, was_clean, code, reason = websocket.send(self.connection, message_to_send)
+		log("Sending '" .. message_to_send .. "'", ok, was_clean, code, reason)
+	elseif click_button(gui.get_node("close/button"), action) then
+		log("Closing")
+		self.ws:close()
+	end
+end

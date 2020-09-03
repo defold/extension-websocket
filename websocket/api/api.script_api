@@ -1,0 +1,119 @@
+- name: websocket
+  type: table
+  desc: Functions and constants for using websockets. Supported on all platforms.
+  members:
+
+#*****************************************************************************************************
+
+  - name: connect
+    type: function
+    desc: Connects to a remote address
+    parameters:
+      - name: url
+        type: string
+        desc: url of the remote connection
+
+      - name: params
+        type: table
+        desc: optional parameters as properties. The following parameters can be set
+        members:
+
+      - name: callback
+        type: function
+        desc: callback that receives all messages from the connection
+        parameters:
+        - name: self
+          type: object
+          desc: The script instance that was used to register the callback
+
+        - name: connection
+          type: object
+          desc: the connection
+
+        - name: data
+          type: table
+          desc: the event payload
+          members:
+          - name: event
+            type: number
+            desc: The current event. One of the following
+
+               - `websocket.EVENT_CONNECTED`
+
+               - `websocket.EVENT_DISCONNECTED`
+
+               - `websocket.EVENT_ERROR`
+
+               - `websocket.EVENT_MESSAGE`
+
+          - name: message
+            type: string
+            desc: The received data. Only valid if event is `websocket.EVENT_MESSAGE`
+
+          - name: error
+            type: string
+            desc: The error string. Only valid if event is `websocket.EVENT_ERROR`
+
+
+    returns:
+      - name: connection
+        type: object
+        desc: the connection
+
+    examples:
+      - desc: |-
+            ```lua
+              local function websocket_callback(self, conn, data)
+                if data.event == websocket.EVENT_DISCONNECTED then
+                  print("disconnected " .. conn)
+                  self.connection = nil
+                elseif data.event == websocket.EVENT_CONNECTED then
+                  print("Connected " .. conn)
+                  -- self.connection = conn
+                elseif data.event == websocket.EVENT_ERROR then
+                  print("Error:", data.error)
+                elseif data.event == websocket.EVENT_MESSAGE then
+                  print("Receiving: '" .. tostring(data.message) .. "'")
+                end
+              end
+
+              function init(self)
+                self.url = "ws://echo.websocket.org"
+                local params = {}
+                self.connection = websocket.connect(self.url, params, websocket_callback)
+              end
+
+              function finalize(self)
+                  if self.connection ~= nil then
+                    websocket.disconnect(self.connection)
+                  end
+              end
+            ```
+
+#*****************************************************************************************************
+
+  - name: disconnect
+    type: function
+    desc: Explicitly close a websocket
+    parameters:
+      - name: connection
+        type: object
+        desc: the websocket connection
+
+#*****************************************************************************************************
+
+  - name: EVENT_CONNECTED
+    type: number
+    desc: The websocket was connected
+
+  - name: EVENT_DISCONNECTED
+    type: number
+    desc: The websocket disconnected
+
+  - name: EVENT_MESSAGE
+    type: number
+    desc: The websocket received data
+
+  - name: EVENT_ERROR
+    type: number
+    desc: The websocket encountered an error
