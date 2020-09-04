@@ -102,6 +102,35 @@
 
 #*****************************************************************************************************
 
+  - name: send
+    type: function
+    desc: Send data on a websocket
+    parameters:
+      - name: connection
+        type: object
+        desc: the websocket connection
+      - name: message
+        type: string
+        desc: the message to send
+
+    examples:
+      - desc: |-
+            ```lua
+              local function websocket_callback(self, conn, data)
+                if data.event == websocket.EVENT_CONNECTED then
+                  websocket.send(conn, "Hello from the other side")
+                end
+              end
+
+              function init(self)
+                self.url = "ws://echo.websocket.org"
+                local params = {}
+                self.connection = websocket.connect(self.url, params, websocket_callback)
+              end
+            ```
+
+#*****************************************************************************************************
+
   - name: EVENT_CONNECTED
     type: number
     desc: The websocket was connected
