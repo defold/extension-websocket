@@ -88,6 +88,9 @@ max_count = 128
 [model]
 max_count = 128
 
+[mesh]
+max_count = 128
+
 [gui]
 max_count = 64
 max_particlefx_count = 64
