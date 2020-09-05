@@ -3,8 +3,6 @@ title = extension-websocket
 version = 1.0
 write_log = 0
 compress_archive = 1
-publisher = unnamed
-developer = unnamed
 _dependencies = https://github.com/GameAnalytics/defold-openssl/archive/1.0.0.zip
 
 [display]
@@ -54,7 +52,6 @@ max_characters = 8192
 max_debug_vertices = 10000
 texture_profiles = /builtins/graphics/default.texture_profiles
 verify_graphics_calls = 1
-memory_size = 512
 
 [shader]
 output_spirv = 0
@@ -86,9 +83,6 @@ subpixels = 1
 max_count = 128
 
 [model]
-max_count = 128
-
-[mesh]
 max_count = 128
 
 [gui]
@@ -156,8 +150,6 @@ auto_finish_transactions = 1
 
 [network]
 http_timeout = 0
-http_thread_count = 4
-http_cache_enabled = 1
 
 [library]
 include_dirs = websocket
@@ -174,7 +166,6 @@ track_cpu = 0
 
 [liveupdate]
 settings = /liveupdate.settings
-enabled = 1
 
 [tilemap]
 max_count = 16
