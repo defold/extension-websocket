@@ -10,6 +10,10 @@
 #include <dmsdk/dlib/dns.h>
 #include <dmsdk/dlib/sslsocket.h>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h> // for EM_ASM
+#endif
+
 namespace dmWebsocket {
 
 
@@ -123,8 +127,16 @@ static void DestroyConnection(WebsocketConnection* conn)
     if (conn->m_Callback)
         dmScript::DestroyCallback(conn->m_Callback);
 
+#if defined(__EMSCRIPTEN__)
+    if (conn->m_Socket != dmSocket::INVALID_SOCKET_HANDLE) {
+        // We would normally do a shutdown() first, but Emscripten returns ENOSYS
+        //dmSocket::Shutdown(conn->m_Socket, dmSocket::SHUTDOWNTYPE_READWRITE);
+        dmSocket::Delete(conn->m_Socket);
+    }
+#else
     if (conn->m_Connection)
         dmConnectionPool::Return(g_Websocket.m_Pool, conn->m_Connection);
+#endif
 
     free((void*)conn->m_Buffer);
     free((void*)conn);
@@ -344,6 +356,14 @@ static dmExtension::Result WebsocketAppInitialize(dmExtension::AppParams* params
     }
 #endif
 
+#if defined(__EMSCRIPTEN__)
+    // avoid mixed content warning if trying to access wss resource from http page
+    // If not using this, we get EHOSTUNREACH
+    EM_ASM({
+        Module["websocket"].url = window["location"]["protocol"].replace("http", "ws") + "//";
+    });
+#endif
+
     g_Websocket.m_Initialized = 1;
     if (!g_Websocket.m_Pool)
     {
@@ -508,20 +528,49 @@ static dmExtension::Result WebsocketOnUpdate(dmExtension::Params* params)
         }
         else if (STATE_CONNECTING == conn->m_State)
         {
-            dmSocket::Result socket_result;
-            int timeout = g_Websocket.m_Timeout;
 #if defined(__EMSCRIPTEN__)
-            timeout = 0;
-#endif
-            dmConnectionPool::Result pool_result = dmConnectionPool::Dial(g_Websocket.m_Pool, conn->m_Url.m_Hostname, conn->m_Url.m_Port, g_Websocket.m_Channel, conn->m_SSL, timeout, &conn->m_Connection, &socket_result);
-            if (dmConnectionPool::RESULT_OK != pool_result)
-            {
-                CLOSE_CONN("Failed to open connection: %s", dmSocket::ResultToString(socket_result));
+            conn->m_SSLSocket = dmSSLSocket::INVALID_SOCKET_HANDLE;
+
+            char uri_buffer[dmURI::MAX_URI_LEN];
+            const char* uri;
+            if (conn->m_Url.m_Path[0] != '\0') {
+                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s/%s", conn->m_Url.m_Hostname, conn->m_Url.m_Path);
+                uri = uri_buffer;
+            } else {
+                uri = conn->m_Url.m_Hostname;
+            }
+
+            dmSocket::Address address;
+            dmSocket::Result sr = dmSocket::GetHostByName(uri, &address, true, false);
+            if (dmSocket::RESULT_OK != sr) {
+                CLOSE_CONN("Failed to get address from host name '%s': %s", uri, dmSocket::ResultToString(sr));
                 continue;
             }
 
+            sr = dmSocket::New(address.m_family, dmSocket::TYPE_STREAM, dmSocket::PROTOCOL_TCP, &conn->m_Socket);
+            if (dmSocket::RESULT_OK != sr) {
+                CLOSE_CONN("Failed to create socket for '%s': %s", conn->m_Url.m_Hostname, dmSocket::ResultToString(sr));
+                continue;
+            }
+
+            sr = dmSocket::Connect(conn->m_Socket, address, conn->m_Url.m_Port);
+            if (dmSocket::RESULT_OK != sr) {
+                CLOSE_CONN("Failed to connect to '%s:%d': %s", conn->m_Url.m_Hostname, (int)conn->m_Url.m_Port, dmSocket::ResultToString(sr));
+                continue;
+            }
+#else
+            dmSocket::Result sr;
+            int timeout = g_Websocket.m_Timeout;
+            dmConnectionPool::Result pool_result = dmConnectionPool::Dial(g_Websocket.m_Pool, conn->m_Url.m_Hostname, conn->m_Url.m_Port, g_Websocket.m_Channel, conn->m_SSL, timeout, &conn->m_Connection, &sr);
+            if (dmConnectionPool::RESULT_OK != pool_result)
+            {
+                CLOSE_CONN("Failed to open connection: %s", dmSocket::ResultToString(sr));
+                continue;
+            }
             conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
             conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
+#endif
+
             SetState(conn, STATE_HANDSHAKE_WRITE);
         }
     }
