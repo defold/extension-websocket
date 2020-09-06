@@ -534,7 +534,7 @@ static dmExtension::Result WebsocketOnUpdate(dmExtension::Params* params)
             char uri_buffer[dmURI::MAX_URI_LEN];
             const char* uri;
             if (conn->m_Url.m_Path[0] != '\0') {
-                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s/%s", conn->m_Url.m_Hostname, conn->m_Url.m_Path);
+                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s%s", conn->m_Url.m_Hostname, conn->m_Url.m_Path);
                 uri = uri_buffer;
             } else {
                 uri = conn->m_Url.m_Hostname;
