@@ -146,7 +146,8 @@ Result ReceiveHeaders(WebsocketConnection* conn)
     conn->m_Buffer[conn->m_BufferSize] = '\0';
 
     // Check if the end of the response has arrived
-    if (conn->m_BufferSize >= 4 && strcmp(conn->m_Buffer + conn->m_BufferSize - 4, "\r\n\r\n") == 0)
+    const char* endtag = strstr(conn->m_Buffer, "\r\n\r\n");
+    if (endtag != 0)
     {
         return RESULT_OK;
     }
@@ -171,6 +172,8 @@ Result VerifyHeaders(WebsocketConnection* conn)
         return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Missing: '%s' in header", http_version_and_status_protocol);
     }
 
+    const char* endtag = strstr(conn->m_Buffer, "\r\n\r\n");
+
     r = strstr(r, "\r\n") + 2;
 
     bool upgraded = false;
@@ -180,7 +183,7 @@ Result VerifyHeaders(WebsocketConnection* conn)
     // TODO: Perhaps also support the Sec-WebSocket-Protocol
 
     // parse the headers in place
-    while (r)
+    while (r < endtag)
     {
         // Tokenize the each header line: "Key: Value\r\n"
         const char* key = r;
@@ -218,10 +221,15 @@ Result VerifyHeaders(WebsocketConnection* conn)
             if (strcmp(value, (const char*)client_key) == 0)
                 valid_key = true;
         }
-
-        if (strcmp(r, "\r\n") == 0)
-            break;
     }
+
+    // The response might contain both the headers, but also (if successful) the first batch of data
+    endtag += 4;
+    uint32_t size = conn->m_BufferSize - (endtag - conn->m_Buffer);
+    conn->m_BufferSize = size;
+    memmove(conn->m_Buffer, endtag, size);
+    conn->m_Buffer[size] = 0;
+    conn->m_HasHandshakeData = conn->m_BufferSize != 0 ? 1 : 0;
 
     if (!upgraded)
         dmLogError("Failed to find the Upgrade keyword in the response headers");

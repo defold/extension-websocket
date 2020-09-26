@@ -9,6 +9,7 @@
 #include <dmsdk/dlib/connection_pool.h>
 #include <dmsdk/dlib/dns.h>
 #include <dmsdk/dlib/sslsocket.h>
+#include <ctype.h> // isprint et al
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h> // for EM_ASM
@@ -16,6 +17,7 @@
 
 namespace dmWebsocket {
 
+int g_DebugWebSocket = 0;
 
 struct WebsocketContext
 {
@@ -60,8 +62,45 @@ const char* StateToString(State err)
 
 #undef STRING_CASE
 
-#define WS_DEBUG(...)
-//#define WS_DEBUG(...) dmLogWarning(__VA_ARGS__);
+void DebugLog(int level, const char* fmt, ...)
+{
+    if (level > g_DebugWebSocket)
+        return;
+
+    size_t buffer_size = 4096;
+    char* buffer = (char*)alloca(buffer_size);
+    va_list lst;
+    va_start(lst, fmt);
+
+    buffer_size = vsnprintf(buffer, buffer_size, fmt, lst);
+    dmLogWarning("%s", buffer);
+    va_end(lst);
+}
+
+void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_bytes)
+{
+    if (level > g_DebugWebSocket)
+        return;
+
+    const uint8_t* bytes = (const uint8_t*)_bytes;
+    printf("%s '", msg);
+    for (uint32_t i = 0; i < num_bytes; ++i)
+    {
+        int c = bytes[i];
+        if (isprint(c))
+            printf("%c", c);
+        else if (c == '\r')
+            printf("\\r");
+        else if (c == '\n')
+            printf("\\n");
+        else if (c == '\t')
+            printf("\\t");
+        else
+            printf("\\%02x", c);
+    }
+    printf("' %u bytes\n", num_bytes);
+}
+
 
 #define CLOSE_CONN(...) \
     SetStatus(conn, RESULT_ERROR, __VA_ARGS__); \
@@ -74,7 +113,7 @@ static void SetState(WebsocketConnection* conn, State state)
     if (prev_state != state)
     {
         conn->m_State = state;
-        WS_DEBUG("%s -> %s", StateToString(prev_state), StateToString(conn->m_State));
+        DebugLog(1, "%s -> %s", StateToString(prev_state), StateToString(conn->m_State));
     }
 }
 
@@ -100,10 +139,11 @@ Result SetStatus(WebsocketConnection* conn, Result status, const char* format, .
 
 static WebsocketConnection* CreateConnection(const char* url)
 {
-    WebsocketConnection* conn = (WebsocketConnection*)malloc(sizeof(WebsocketConnection));
-    memset(conn, 0, sizeof(WebsocketConnection));
+    WebsocketConnection* conn = new WebsocketConnection;
     conn->m_BufferCapacity = g_Websocket.m_BufferSize;
     conn->m_Buffer = (char*)malloc(conn->m_BufferCapacity);
+    conn->m_Buffer[0] = 0;
+    conn->m_BufferSize = 0;
 
     dmURI::Parts uri;
     dmURI::Parse(url, &conn->m_Url);
@@ -113,6 +153,17 @@ static WebsocketConnection* CreateConnection(const char* url)
 
     conn->m_SSL = strcmp(conn->m_Url.m_Scheme, "wss") == 0 ? 1 : 0;
     conn->m_State = STATE_CONNECTING;
+
+    conn->m_Callback = 0;
+    conn->m_Connection = 0;
+    conn->m_Socket = 0;
+    conn->m_SSLSocket = 0;
+    conn->m_Status = RESULT_OK;
+    conn->m_HasHandshakeData = 0;
+
+#if defined(HAVE_WSLAY)
+    conn->m_Ctx = 0;
+#endif
 
     return conn;
 }
@@ -138,8 +189,9 @@ static void DestroyConnection(WebsocketConnection* conn)
         dmConnectionPool::Return(g_Websocket.m_Pool, conn->m_Connection);
 #endif
 
+
     free((void*)conn->m_Buffer);
-    free((void*)conn);
+    delete conn;
 }
 
 
@@ -239,7 +291,7 @@ static int LuaSend(lua_State* L)
     const char* string = luaL_checklstring(L, 2, &string_length);
 
 #if defined(HAVE_WSLAY)
-    int write_mode = WSLAY_BINARY_FRAME; // WSLAY_TEXT_FRAME
+    int write_mode = WSLAY_BINARY_FRAME; // or WSLAY_TEXT_FRAME
 
     struct wslay_event_msg msg;
     msg.opcode = write_mode;
@@ -259,7 +311,7 @@ static int LuaSend(lua_State* L)
     return 0;
 }
 
-static void HandleCallback(WebsocketConnection* conn, int event)
+static void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int msg_length)
 {
     if (!dmScript::IsCallbackValid(conn->m_Callback))
         return;
@@ -285,7 +337,7 @@ static void HandleCallback(WebsocketConnection* conn, int event)
         lua_setfield(L, -2, "error");
     }
     else if (EVENT_MESSAGE == event) {
-        lua_pushlstring(L, conn->m_Buffer, conn->m_BufferSize);
+        lua_pushlstring(L, conn->m_Buffer + msg_offset, msg_length);
         lua_setfield(L, -2, "message");
     }
 
@@ -329,7 +381,7 @@ static void LuaInit(lua_State* L)
     assert(top == lua_gettop(L));
 }
 
-static dmExtension::Result WebsocketAppInitialize(dmExtension::AppParams* params)
+static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
 {
     g_Websocket.m_BufferSize = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.buffer_size", 64 * 1024);
     g_Websocket.m_Timeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.socket_timeout", 500 * 1000);
@@ -340,6 +392,10 @@ static dmExtension::Result WebsocketAppInitialize(dmExtension::AppParams* params
     dmConnectionPool::Params pool_params;
     pool_params.m_MaxConnections = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.max_connections", 2);
     dmConnectionPool::Result result = dmConnectionPool::New(&pool_params, &g_Websocket.m_Pool);
+
+    g_DebugWebSocket = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.debug", 0);
+    if (g_DebugWebSocket)
+        dmLogInfo("dmWebSocket::g_DebugWebSocket == %d", g_DebugWebSocket);
 
     if (dmConnectionPool::RESULT_OK != result)
     {
@@ -380,7 +436,7 @@ static dmExtension::Result WebsocketAppInitialize(dmExtension::AppParams* params
     return dmExtension::RESULT_OK;
 }
 
-static dmExtension::Result WebsocketInitialize(dmExtension::Params* params)
+static dmExtension::Result Initialize(dmExtension::Params* params)
 {
     if (!g_Websocket.m_Initialized)
         return dmExtension::RESULT_OK;
@@ -391,19 +447,27 @@ static dmExtension::Result WebsocketInitialize(dmExtension::Params* params)
     return dmExtension::RESULT_OK;
 }
 
-static dmExtension::Result WebsocketAppFinalize(dmExtension::AppParams* params)
+static dmExtension::Result AppFinalize(dmExtension::AppParams* params)
 {
 
     dmConnectionPool::Shutdown(g_Websocket.m_Pool, dmSocket::SHUTDOWNTYPE_READWRITE);
     return dmExtension::RESULT_OK;
 }
 
-static dmExtension::Result WebsocketFinalize(dmExtension::Params* params)
+static dmExtension::Result Finalize(dmExtension::Params* params)
 {
     return dmExtension::RESULT_OK;
 }
 
-static dmExtension::Result WebsocketOnUpdate(dmExtension::Params* params)
+Result PushMessage(WebsocketConnection* conn, int length)
+{
+    if (conn->m_Messages.Full())
+        conn->m_Messages.OffsetCapacity(4);
+    conn->m_Messages.Push(length);
+    return dmWebsocket::RESULT_OK;
+}
+
+static dmExtension::Result OnUpdate(dmExtension::Params* params)
 {
     uint32_t size = g_Websocket.m_Connections.Size();
 
@@ -415,10 +479,10 @@ static dmExtension::Result WebsocketOnUpdate(dmExtension::Params* params)
         {
             if (RESULT_OK != conn->m_Status)
             {
-                HandleCallback(conn, EVENT_ERROR);
+                HandleCallback(conn, EVENT_ERROR, 0, 0);
             }
 
-            HandleCallback(conn, EVENT_DISCONNECTED);
+            HandleCallback(conn, EVENT_DISCONNECTED, 0, 0);
 
             g_Websocket.m_Connections.EraseSwap(i);
             --i;
@@ -450,9 +514,9 @@ static dmExtension::Result WebsocketOnUpdate(dmExtension::Params* params)
 
             if (dmSocket::RESULT_OK == sr)
             {
+                PushMessage(conn, conn->m_Buffer, recv_bytes);
                 conn->m_BufferSize += recv_bytes;
                 conn->m_Buffer[conn->m_BufferCapacity-1] = 0;
-                conn->m_HasMessage = 1;
             }
             else
             {
@@ -461,12 +525,15 @@ static dmExtension::Result WebsocketOnUpdate(dmExtension::Params* params)
             }
 #endif
 
-            if (conn->m_HasMessage)
+            uint32_t offset = 0;
+            for (uint32_t i = 0; i < conn->m_Messages.Size(); ++i)
             {
-                HandleCallback(conn, EVENT_MESSAGE);
-                conn->m_HasMessage = 0;
-                conn->m_BufferSize = 0;
+                uint32_t length = conn->m_Messages[i];
+                HandleCallback(conn, EVENT_MESSAGE, offset, length);
+                offset += length;
             }
+            conn->m_Messages.SetSize(0);
+            conn->m_BufferSize = 0;
         }
         else if (STATE_HANDSHAKE_READ == conn->m_State)
         {
@@ -482,6 +549,7 @@ static dmExtension::Result WebsocketOnUpdate(dmExtension::Params* params)
                 continue;
             }
 
+            // Verifies headers, and also stages any initial sent data
             result = VerifyHeaders(conn);
             if (RESULT_OK != result)
             {
@@ -505,11 +573,8 @@ static dmExtension::Result WebsocketOnUpdate(dmExtension::Params* params)
 #endif
             dmSocket::SetBlocking(conn->m_Socket, false);
 
-            conn->m_Buffer[0] = 0;
-            conn->m_BufferSize = 0;
-
             SetState(conn, STATE_CONNECTED);
-            HandleCallback(conn, EVENT_CONNECTED);
+            HandleCallback(conn, EVENT_CONNECTED, 0, 0);
         }
         else if (STATE_HANDSHAKE_WRITE == conn->m_State)
         {
@@ -580,6 +645,6 @@ static dmExtension::Result WebsocketOnUpdate(dmExtension::Params* params)
 
 } // dmWebsocket
 
-DM_DECLARE_EXTENSION(Websocket, LIB_NAME, dmWebsocket::WebsocketAppInitialize, dmWebsocket::WebsocketAppFinalize, dmWebsocket::WebsocketInitialize, dmWebsocket::WebsocketOnUpdate, 0, dmWebsocket::WebsocketFinalize)
+DM_DECLARE_EXTENSION(Websocket, LIB_NAME, dmWebsocket::AppInitialize, dmWebsocket::AppFinalize, dmWebsocket::Initialize, dmWebsocket::OnUpdate, 0, dmWebsocket::Finalize)
 
 #undef CLOSE_CONN
