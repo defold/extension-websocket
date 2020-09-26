@@ -15,6 +15,11 @@
 #include <emscripten/emscripten.h> // for EM_ASM
 #endif
 
+#if defined(WIN32)
+#include <malloc.h>
+#define alloca _alloca
+#endif
+
 namespace dmWebsocket {
 
 int g_DebugWebSocket = 0;
@@ -514,7 +519,7 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 
             if (dmSocket::RESULT_OK == sr)
             {
-                PushMessage(conn, conn->m_Buffer, recv_bytes);
+                PushMessage(conn, recv_bytes);
                 conn->m_BufferSize += recv_bytes;
                 conn->m_Buffer[conn->m_BufferCapacity-1] = 0;
             }
