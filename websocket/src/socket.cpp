@@ -56,7 +56,9 @@ dmSocket::Result Receive(WebsocketConnection* conn, void* buffer, int length, in
         sr = dmSocket::Receive(conn->m_Socket, buffer, length, received_bytes);
 
     int num_bytes = received_bytes ? (uint32_t)*received_bytes : 0;
-    if (sr == dmSocket::RESULT_OK && num_bytes > 0)
+    if (sr == dmSocket::RESULT_OK && num_bytes == 0)
+        return dmSocket::RESULT_CONNABORTED;
+    if (sr == dmSocket::RESULT_OK)
         DebugPrint(2, "Received bytes:", buffer, num_bytes);
 
     return sr;

@@ -133,6 +133,8 @@ Result SetStatus(WebsocketConnection* conn, Result status, const char* format, .
         conn->m_BufferSize = vsnprintf(conn->m_Buffer, conn->m_BufferCapacity, format, lst);
         va_end(lst);
         conn->m_Status = status;
+
+        DebugLog(1, "STATUS: '%s'  len: %u", conn->m_Buffer, conn->m_BufferSize);
     }
     return status;
 }
@@ -337,14 +339,8 @@ static void HandleCallback(WebsocketConnection* conn, int event, int msg_offset,
     lua_pushinteger(L, event);
     lua_setfield(L, -2, "event");
 
-    if (EVENT_ERROR == event) {
-        lua_pushlstring(L, conn->m_Buffer, conn->m_BufferSize);
-        lua_setfield(L, -2, "error");
-    }
-    else if (EVENT_MESSAGE == event) {
-        lua_pushlstring(L, conn->m_Buffer + msg_offset, msg_length);
-        lua_setfield(L, -2, "message");
-    }
+    lua_pushlstring(L, conn->m_Buffer + msg_offset, msg_length);
+    lua_setfield(L, -2, "message");
 
     dmScript::PCall(L, 3, 0);
 
@@ -464,11 +460,34 @@ static dmExtension::Result Finalize(dmExtension::Params* params)
     return dmExtension::RESULT_OK;
 }
 
-Result PushMessage(WebsocketConnection* conn, int length)
+Result PushMessage(WebsocketConnection* conn, MessageType type, int length, const uint8_t* buffer)
 {
     if (conn->m_Messages.Full())
         conn->m_Messages.OffsetCapacity(4);
-    conn->m_Messages.Push(length);
+
+    Message msg;
+    msg.m_Type = (uint32_t)type;
+    msg.m_Length = length;
+    conn->m_Messages.Push(msg);
+
+    // No need to copy itself (html5)
+    if (buffer != (const uint8_t*)conn->m_Buffer)
+    {
+        if ((conn->m_BufferSize + length) >= conn->m_BufferCapacity)
+        {
+            conn->m_BufferCapacity = conn->m_BufferSize + length + 1;
+            conn->m_Buffer = (char*)realloc(conn->m_Buffer, conn->m_BufferCapacity);
+        }
+        // append to the end of the buffer
+        memcpy(conn->m_Buffer + conn->m_BufferSize, buffer, length);
+    }
+
+    conn->m_BufferSize += length;
+    conn->m_Buffer[conn->m_BufferCapacity-1] = 0;
+
+    // Instead of printing from the incoming buffer, we print from our own, to make sure it looks ok
+    DebugPrint(2, __FUNCTION__, conn->m_Buffer+conn->m_BufferSize-length, length);
+
     return dmWebsocket::RESULT_OK;
 }
 
@@ -484,10 +503,13 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
         {
             if (RESULT_OK != conn->m_Status)
             {
-                HandleCallback(conn, EVENT_ERROR, 0, 0);
+                HandleCallback(conn, EVENT_ERROR, 0, conn->m_BufferSize);
+                HandleCallback(conn, EVENT_DISCONNECTED, 0, 0);
             }
-
-            HandleCallback(conn, EVENT_DISCONNECTED, 0, 0);
+            else
+            {
+                HandleCallback(conn, EVENT_DISCONNECTED, 0, conn->m_BufferSize);
+            }
 
             g_Websocket.m_Connections.EraseSwap(i);
             --i;
@@ -503,12 +525,6 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                 CLOSE_CONN("Websocket closing for %s (%s)", conn->m_Url.m_Hostname, WSL_ResultToString(r));
                 continue;
             }
-            r = WSL_WantsExit(conn->m_Ctx);
-            if (0 != r)
-            {
-                CLOSE_CONN("Websocket received close event for %s", conn->m_Url.m_Hostname);
-                continue;
-            }
 #else
             int recv_bytes = 0;
             dmSocket::Result sr = Receive(conn, conn->m_Buffer, conn->m_BufferCapacity-1, &recv_bytes);
@@ -519,9 +535,7 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 
             if (dmSocket::RESULT_OK == sr)
             {
-                PushMessage(conn, recv_bytes);
-                conn->m_BufferSize += recv_bytes;
-                conn->m_Buffer[conn->m_BufferCapacity-1] = 0;
+                PushMessage(conn, MESSAGE_TYPE_NORMAL, recv_bytes, (const uint8_t*)conn->m_Buffer);
             }
             else
             {
@@ -531,14 +545,32 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 #endif
 
             uint32_t offset = 0;
+            bool close_received = false;
             for (uint32_t i = 0; i < conn->m_Messages.Size(); ++i)
             {
-                uint32_t length = conn->m_Messages[i];
-                HandleCallback(conn, EVENT_MESSAGE, offset, length);
-                offset += length;
+                const Message& msg = conn->m_Messages[i];
+
+                if (EVENT_DISCONNECTED == msg.m_Type)
+                {
+                    conn->m_Status = RESULT_OK;
+                    CloseConnection(conn);
+
+                    // Put the message at the front of the buffer
+                    conn->m_Messages.SetSize(0);
+                    conn->m_BufferSize = 0;
+                    PushMessage(conn, MESSAGE_TYPE_CLOSE, msg.m_Length, (const uint8_t*)conn->m_Buffer+offset);
+                    close_received = true;
+                    break;
+                }
+
+                HandleCallback(conn, EVENT_MESSAGE, offset, msg.m_Length);
+                offset += msg.m_Length;
             }
-            conn->m_Messages.SetSize(0);
-            conn->m_BufferSize = 0;
+            if (!close_received) // saving the close message for next step
+            {
+                conn->m_Messages.SetSize(0);
+                conn->m_BufferSize = 0;
+            }
         }
         else if (STATE_HANDSHAKE_READ == conn->m_State)
         {

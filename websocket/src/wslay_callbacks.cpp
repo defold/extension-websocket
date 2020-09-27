@@ -54,8 +54,8 @@ void WSL_Exit(wslay_event_context_ptr ctx)
 
 int WSL_Close(wslay_event_context_ptr ctx)
 {
-    const char* reason = "Client wants to close";
-    wslay_event_queue_close(ctx, 0, (const uint8_t*)reason, strlen(reason));
+    const char* reason = "";
+    wslay_event_queue_close(ctx, WSLAY_CODE_NORMAL_CLOSURE, (const uint8_t*)reason, 0);
     return 0;
 }
 
@@ -66,14 +66,6 @@ int WSL_Poll(wslay_event_context_ptr ctx)
         dmLogError("Websocket poll error: %s", WSL_ResultToString(r));
     }
     return r;
-}
-
-int WSL_WantsExit(wslay_event_context_ptr ctx)
-{
-    if ((wslay_event_get_close_sent(ctx) && wslay_event_get_close_received(ctx))) {
-        return 1;
-    }
-    return 0;
 }
 
 ssize_t WSL_RecvCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, int flags, void *user_data)
@@ -132,21 +124,29 @@ void WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event
     WebsocketConnection* conn = (WebsocketConnection*)user_data;
     if (arg->opcode == WSLAY_TEXT_FRAME || arg->opcode == WSLAY_BINARY_FRAME)
     {
-        if ((conn->m_BufferSize + arg->msg_length) >= conn->m_BufferCapacity)
-        {
-            conn->m_BufferCapacity = conn->m_BufferSize + arg->msg_length + 1;
-            conn->m_Buffer = (char*)realloc(conn->m_Buffer, conn->m_BufferCapacity);
-        }
-        // append to the end of the buffer
-        memcpy(conn->m_Buffer + conn->m_BufferSize, arg->msg, arg->msg_length);
-        conn->m_BufferSize += arg->msg_length;
-
-        PushMessage(conn, arg->msg_length);
-        DebugPrint(2, __FUNCTION__, conn->m_Buffer+conn->m_BufferSize-arg->msg_length, arg->msg_length);
-
+        PushMessage(conn, MESSAGE_TYPE_NORMAL, arg->msg_length, arg->msg);
     } else if (arg->opcode == WSLAY_CONNECTION_CLOSE)
     {
-        // TODO: Store the reason
+        // The first two bytes is the close code
+        const uint8_t* reason = (const uint8_t*)"";
+        size_t len = arg->msg_length;
+        if (arg->msg_length > 2)
+        {
+            reason = arg->msg + 2;
+            len -= 2;
+        }
+
+        char buffer[1024];
+        len = dmSnPrintf(buffer, sizeof(buffer), "Server closing (%u). Reason: '%s'", wslay_event_get_status_code_received(ctx), reason);
+        PushMessage(conn, MESSAGE_TYPE_CLOSE, len, (const uint8_t*)buffer);
+
+        if (!wslay_event_get_close_sent(ctx))
+        {
+            wslay_event_queue_close(ctx, arg->status_code, (const uint8_t*)buffer, len);
+        }
+
+        DebugLog(1, "%s", buffer);
+
     }
 }
 
