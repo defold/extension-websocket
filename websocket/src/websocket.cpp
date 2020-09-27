@@ -504,12 +504,10 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             if (RESULT_OK != conn->m_Status)
             {
                 HandleCallback(conn, EVENT_ERROR, 0, conn->m_BufferSize);
-                HandleCallback(conn, EVENT_DISCONNECTED, 0, 0);
+                conn->m_BufferSize = 0;
             }
-            else
-            {
-                HandleCallback(conn, EVENT_DISCONNECTED, 0, conn->m_BufferSize);
-            }
+
+            HandleCallback(conn, EVENT_DISCONNECTED, 0, conn->m_BufferSize);
 
             g_Websocket.m_Connections.EraseSwap(i);
             --i;
