@@ -86,7 +86,7 @@ ssize_t WSL_RecvCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, 
     dmSocket::Result socket_result = Receive(conn, buf, len, &r);
 
     if (dmSocket::RESULT_OK == socket_result && r == 0)
-        socket_result = dmSocket::RESULT_WOULDBLOCK;
+        socket_result = dmSocket::RESULT_CONNABORTED;
 
     if (dmSocket::RESULT_OK != socket_result)
     {
