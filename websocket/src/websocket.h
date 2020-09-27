@@ -19,6 +19,7 @@
 #include <dmsdk/dlib/socket.h>
 #include <dmsdk/dlib/dns.h>
 #include <dmsdk/dlib/uri.h>
+#include <dmsdk/dlib/array.h>
 
 namespace dmCrypt
 {
@@ -69,14 +70,16 @@ namespace dmWebsocket
         dmConnectionPool::HConnection   m_Connection;
         dmSocket::Socket                m_Socket;
         dmSSLSocket::Socket             m_SSLSocket;
+        dmArray<uint32_t>               m_Messages; // lengths of the messages in the data buffer
         uint8_t                         m_Key[16];
         State                           m_State;
-        uint32_t                        m_SSL:1;
-        uint32_t                        m_HasMessage:1;
         char*                           m_Buffer;
         int                             m_BufferSize;
         uint32_t                        m_BufferCapacity;
         Result                          m_Status;
+        uint8_t                         m_SSL:1;
+        uint8_t                         m_HasHandshakeData:1;
+        uint8_t                         :6;
     };
 
     // Set error message
@@ -96,6 +99,9 @@ namespace dmWebsocket
     Result ReceiveHeaders(WebsocketConnection* conn);
     Result VerifyHeaders(WebsocketConnection* conn);
 
+    // Messages
+    Result PushMessage(WebsocketConnection* conn, int length);
+
 #if defined(HAVE_WSLAY)
     // Wslay callbacks
     int     WSL_Init(wslay_event_context_ptr* ctx, ssize_t buffer_size, void* userctx);
@@ -114,6 +120,15 @@ namespace dmWebsocket
     typedef struct { uint64_t state;  uint64_t inc; } pcg32_random_t;
     void pcg32_srandom_r(pcg32_random_t* rng, uint64_t initstate, uint64_t initseq);
     uint32_t pcg32_random_r(pcg32_random_t* rng);
+
+    // If level <= dmWebSocket::g_DebugWebSocket, then it outputs the message
+#ifdef __GNUC__
+    void DebugLog(int level, const char* fmt, ...) __attribute__ ((format (printf, 2, 3)));
+#else
+    void DebugLog(int level, const char* fmt, ...);
+#endif
+
+    void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_bytes);
 }
 
 

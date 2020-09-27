@@ -42,15 +42,24 @@ dmSocket::Result Send(WebsocketConnection* conn, const char* buffer, int length,
     }
     if (out_sent_bytes)
         *out_sent_bytes = total_sent_bytes;
+
+    DebugPrint(2, "Sent buffer:", buffer, length);
     return dmSocket::RESULT_OK;
 }
 
 dmSocket::Result Receive(WebsocketConnection* conn, void* buffer, int length, int* received_bytes)
 {
+    dmSocket::Result sr;
     if (conn->m_SSLSocket)
-        return dmSSLSocket::Receive(conn->m_SSLSocket, buffer, length, received_bytes);
+        sr = dmSSLSocket::Receive(conn->m_SSLSocket, buffer, length, received_bytes);
     else
-        return dmSocket::Receive(conn->m_Socket, buffer, length, received_bytes);
+        sr = dmSocket::Receive(conn->m_Socket, buffer, length, received_bytes);
+
+    int num_bytes = received_bytes ? (uint32_t)*received_bytes : 0;
+    if (sr == dmSocket::RESULT_OK && num_bytes > 0)
+        DebugPrint(2, "Received bytes:", buffer, num_bytes);
+
+    return sr;
 }
 
 } // namespace

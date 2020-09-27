@@ -82,6 +82,15 @@ ssize_t WSL_RecvCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, 
 
     int r = -1; // received bytes if >=0, error if < 0
 
+    if (conn->m_HasHandshakeData)
+    {
+        r = conn->m_BufferSize;
+        memcpy(buf, conn->m_Buffer, r);
+        conn->m_BufferSize = 0;
+        conn->m_HasHandshakeData = 0;
+        return r;
+    }
+
     dmSocket::Result socket_result = Receive(conn, buf, len, &r);
 
     if (dmSocket::RESULT_OK == socket_result && r == 0)
@@ -117,16 +126,23 @@ ssize_t WSL_SendCallback(wslay_event_context_ptr ctx, const uint8_t *data, size_
     return (ssize_t)sent_bytes;
 }
 
+// Might be called multiple times for a connection receiving multiple events
 void WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event_on_msg_recv_arg *arg, void *user_data)
 {
     WebsocketConnection* conn = (WebsocketConnection*)user_data;
     if (arg->opcode == WSLAY_TEXT_FRAME || arg->opcode == WSLAY_BINARY_FRAME)
     {
-        if (arg->msg_length >= conn->m_BufferCapacity)
-            conn->m_Buffer = (char*)realloc(conn->m_Buffer, arg->msg_length + 1);
-        memcpy(conn->m_Buffer, arg->msg, arg->msg_length);
-        conn->m_BufferSize = arg->msg_length;
-        conn->m_HasMessage = 1;
+        if ((conn->m_BufferSize + arg->msg_length) >= conn->m_BufferCapacity)
+        {
+            conn->m_BufferCapacity = conn->m_BufferSize + arg->msg_length + 1;
+            conn->m_Buffer = (char*)realloc(conn->m_Buffer, conn->m_BufferCapacity);
+        }
+        // append to the end of the buffer
+        memcpy(conn->m_Buffer + conn->m_BufferSize, arg->msg, arg->msg_length);
+        conn->m_BufferSize += arg->msg_length;
+
+        PushMessage(conn, arg->msg_length);
+        DebugPrint(2, __FUNCTION__, conn->m_Buffer+conn->m_BufferSize-arg->msg_length, arg->msg_length);
 
     } else if (arg->opcode == WSLAY_CONNECTION_CLOSE)
     {
