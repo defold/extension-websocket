@@ -10,3 +10,13 @@ We recommend using a link to a zip file of a [specific release](https://github.c
 ## API reference
 
 https://defold.com/extension-websocket/api/
+
+## Debugging
+
+In order to make it easier to debug this extension, we provide a `game.project` setting `websocket.debug`.
+
+Set it to:
+
+* `0` to disable debugging (i.e. no debug output).
+* `1` to display state changes.
+* `2` to display the messages sent and received.

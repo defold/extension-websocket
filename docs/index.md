@@ -20,9 +20,12 @@ local function websocket_callback(self, conn, data)
         print("Connected " .. conn)
         -- self.connection = conn
     elseif data.event == websocket.EVENT_ERROR then
-        print("Error:", data.error)
+        print("Error:", data.message)
     elseif data.event == websocket.EVENT_MESSAGE then
         print("Receiving: '" .. tostring(data.message) .. "'")
+    end
+    elseif data.event == websocket.EVENT_DISCONNECTED then
+        print("Disconnected: '" .. tostring(data.message) .. "'")
     end
 end
 

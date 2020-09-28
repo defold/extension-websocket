@@ -60,6 +60,18 @@ namespace dmWebsocket
         EVENT_ERROR,
     };
 
+    enum MessageType
+    {
+        MESSAGE_TYPE_NORMAL = 0,
+        MESSAGE_TYPE_CLOSE  = 1,
+    };
+
+    struct Message
+    {
+        uint32_t m_Length:30;
+        uint32_t m_Type:2;
+    };
+
     struct WebsocketConnection
     {
         dmScript::LuaCallbackInfo*      m_Callback;
@@ -70,7 +82,7 @@ namespace dmWebsocket
         dmConnectionPool::HConnection   m_Connection;
         dmSocket::Socket                m_Socket;
         dmSSLSocket::Socket             m_SSLSocket;
-        dmArray<uint32_t>               m_Messages; // lengths of the messages in the data buffer
+        dmArray<Message>                m_Messages; // lengths of the messages in the data buffer
         uint8_t                         m_Key[16];
         State                           m_State;
         char*                           m_Buffer;
@@ -100,7 +112,7 @@ namespace dmWebsocket
     Result VerifyHeaders(WebsocketConnection* conn);
 
     // Messages
-    Result PushMessage(WebsocketConnection* conn, int length);
+    Result PushMessage(WebsocketConnection* conn, MessageType type, int length, const uint8_t* msg);
 
 #if defined(HAVE_WSLAY)
     // Wslay callbacks
@@ -108,7 +120,6 @@ namespace dmWebsocket
     void    WSL_Exit(wslay_event_context_ptr ctx);
     int     WSL_Close(wslay_event_context_ptr ctx);
     int     WSL_Poll(wslay_event_context_ptr ctx);
-    int     WSL_WantsExit(wslay_event_context_ptr ctx);
     ssize_t WSL_RecvCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, int flags, void *user_data);
     ssize_t WSL_SendCallback(wslay_event_context_ptr ctx, const uint8_t *data, size_t len, int flags, void *user_data);
     void    WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event_on_msg_recv_arg *arg, void *user_data);
