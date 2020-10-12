@@ -191,7 +191,8 @@ Result VerifyHeaders(WebsocketConnection* conn)
 
     r = strstr(r, "\r\n") + 2;
 
-    bool upgraded = false;
+    bool connection = false;
+    bool upgrade = false;
     bool valid_key = false;
     const char* protocol = "";
 
@@ -212,8 +213,11 @@ Result VerifyHeaders(WebsocketConnection* conn)
         *r = 0;
         r += 2;
 
+        // Page 18 in https://tools.ietf.org/html/rfc6455#section-11.3.3
         if (dmStriCmp(key, "Connection") == 0 && dmStriCmp(value, "Upgrade") == 0)
-            upgraded = true;
+            connection = true;
+        else if (dmStriCmp(key, "Upgrade") == 0 && dmStriCmp(value, "websocket") == 0)
+            upgrade = true;
         else if (dmStriCmp(key, "Sec-WebSocket-Accept") == 0)
         {
             uint8_t client_key[32 + 40];
@@ -255,16 +259,19 @@ Result VerifyHeaders(WebsocketConnection* conn)
     conn->m_Buffer[size] = 0;
     conn->m_HasHandshakeData = conn->m_BufferSize != 0 ? 1 : 0;
 
-    if (!upgraded)
+    if (!connection)
+        dmLogError("Failed to find the Connection keyword in the response headers");
+    if (!upgrade)
         dmLogError("Failed to find the Upgrade keyword in the response headers");
     if (!valid_key)
         dmLogError("Failed to find valid key in the response headers");
 
-    if (!(upgraded && valid_key)) {
+    bool ok = connection && upgrade && valid_key;
+    if (!ok) {
         dmLogError("Response:\n\"%s\"\n", conn->m_Buffer);
     }
 
-    return (upgraded && valid_key) ? RESULT_OK : RESULT_HANDSHAKE_FAILED;
+    return ok ? RESULT_OK : RESULT_HANDSHAKE_FAILED;
 }
 #endif
 
