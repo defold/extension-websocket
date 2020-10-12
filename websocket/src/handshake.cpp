@@ -1,5 +1,6 @@
 #include "websocket.h"
 #include <dmsdk/dlib/socket.h>
+#include <ctype.h> // tolower
 
 namespace dmWebsocket
 {
@@ -156,6 +157,20 @@ Result ReceiveHeaders(WebsocketConnection* conn)
 }
 #endif
 
+static int dmStriCmp(const char* s1, const char* s2)
+{
+    for (;;)
+    {
+        if (!*s1 || !*s2 || tolower((unsigned char) *s1) != tolower((unsigned char) *s2))
+        {
+            return (unsigned char) *s1 - (unsigned char) *s2;
+        }
+        s1++;
+        s2++;
+    }
+}
+
+
 #if defined(__EMSCRIPTEN__)
 Result VerifyHeaders(WebsocketConnection* conn)
 {
@@ -197,26 +212,35 @@ Result VerifyHeaders(WebsocketConnection* conn)
         *r = 0;
         r += 2;
 
-        if (strcmp(key, "Connection") == 0 && strcmp(value, "Upgrade") == 0)
+        if (dmStriCmp(key, "Connection") == 0 && dmStriCmp(value, "Upgrade") == 0)
             upgraded = true;
-        else if (strcmp(key, "Sec-WebSocket-Accept") == 0)
+        else if (dmStriCmp(key, "Sec-WebSocket-Accept") == 0)
         {
-
             uint8_t client_key[32 + 40];
             uint32_t client_key_len = sizeof(client_key);
             dmCrypt::Base64Encode(conn->m_Key, sizeof(conn->m_Key), client_key, &client_key_len);
             client_key[client_key_len] = 0;
 
+            DebugLog(2, "Secret key (base64): %s", client_key);
+
             memcpy(client_key + client_key_len, RFC_MAGIC, strlen(RFC_MAGIC));
             client_key_len += strlen(RFC_MAGIC);
             client_key[client_key_len] = 0;
 
+            DebugLog(2, "Secret key + RFC_MAGIC: %s", client_key);
+
             uint8_t client_key_sha1[20];
             dmCrypt::HashSha1(client_key, client_key_len, client_key_sha1);
+
+            DebugPrint(2, "Hashed key (sha1):", client_key_sha1, sizeof(client_key_sha1));
 
             client_key_len = sizeof(client_key);
             dmCrypt::Base64Encode(client_key_sha1, sizeof(client_key_sha1), client_key, &client_key_len);
             client_key[client_key_len] = 0;
+
+            DebugLog(2, "Client key (base64): %s", client_key);
+
+            DebugLog(2, "Server key (base64): %s", value);
 
             if (strcmp(value, (const char*)client_key) == 0)
                 valid_key = true;
