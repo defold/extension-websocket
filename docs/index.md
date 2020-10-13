@@ -14,18 +14,16 @@ Here is how you connect to a websocket and listen to events:
 ```lua
 local function websocket_callback(self, conn, data)
     if data.event == websocket.EVENT_DISCONNECTED then
-        print("disconnected " .. conn)
+        log("Disconnected: " .. tostring(conn))
         self.connection = nil
+        update_gui(self)
     elseif data.event == websocket.EVENT_CONNECTED then
-        print("Connected " .. conn)
-        -- self.connection = conn
+        update_gui(self)
+        log("Connected: " .. tostring(conn))
     elseif data.event == websocket.EVENT_ERROR then
-        print("Error:", data.message)
+        log("Error: '" .. data.error .. "'")
     elseif data.event == websocket.EVENT_MESSAGE then
-        print("Receiving: '" .. tostring(data.message) .. "'")
-    end
-    elseif data.event == websocket.EVENT_DISCONNECTED then
-        print("Disconnected: '" .. tostring(data.message) .. "'")
+        log("Receiving: '" .. tostring(data.message) .. "'")
     end
 end
 
