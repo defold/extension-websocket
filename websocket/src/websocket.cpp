@@ -87,23 +87,50 @@ void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_byt
     if (level > g_DebugWebSocket)
         return;
 
+    char buffer[1024];
+    char submessage[128];
+    uint32_t sublength = 0;
+
+    uint32_t len = dmSnPrintf(buffer, sizeof(buffer), "%s '", msg);
+
     const uint8_t* bytes = (const uint8_t*)_bytes;
-    printf("%s '", msg);
     for (uint32_t i = 0; i < num_bytes; ++i)
     {
+        if (len + 2 >= sizeof(buffer))
+        {
+            dmLogWarning("%s", buffer);
+            buffer[0] = 0;
+            len = 0;
+        }
+
+        sublength = 0;
+
         int c = bytes[i];
         if (isprint(c))
-            printf("%c", c);
+            sublength = dmSnPrintf(submessage, sizeof(submessage), "%c", c);
         else if (c == '\r')
-            printf("\\r");
+            sublength = dmSnPrintf(submessage, sizeof(submessage), "\\r");
         else if (c == '\n')
-            printf("\\n");
+            sublength = dmSnPrintf(submessage, sizeof(submessage), "\\n");
         else if (c == '\t')
-            printf("\\t");
+            sublength = dmSnPrintf(submessage, sizeof(submessage), "\\t");
         else
-            printf("\\%02x", c);
+            sublength = dmSnPrintf(submessage, sizeof(submessage), "\\%02x", c);
+        dmStrlCat(buffer, submessage, sizeof(buffer));
+        len += sublength;
     }
-    printf("' %u bytes\n", num_bytes);
+
+    if (len + 2 >= sizeof(buffer))
+    {
+        dmLogWarning("%s", buffer);
+        buffer[0] = 0;
+        len = 0;
+    }
+
+    sublength = dmSnPrintf(submessage, sizeof(submessage), "' %u bytes", num_bytes);
+    dmStrlCat(buffer, submessage, sizeof(buffer));
+    len += sublength;
+    dmLogWarning("%s", buffer);
 }
 
 
