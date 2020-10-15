@@ -20,3 +20,13 @@ Set it to:
 * `0` to disable debugging (i.e. no debug output).
 * `1` to display state changes.
 * `2` to display the messages sent and received.
+
+## External resources
+
+To verify that your websocket server works, you can test it with some tools.
+
+* [websocat](https://github.com/vi/websocat)
+
+Or, you can test your server on this web page:
+
+* https://www.websocket.org/echo.html
