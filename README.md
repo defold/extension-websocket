@@ -37,6 +37,6 @@ To monitor all the packets sent to/from the client/server, you can use e.g.
 
 For command line debugging, there's
 
-* tcpdump: `sudo tcpdump -A -s0 -ilo0 port 8080 ` (example for local ws:// connection)
+* tcpdump: `sudo tcpdump -X -s0 -ilo0 port 8080 ` (example for local ws:// connection)
 
-* lsof
+* tcpdump: `sudo tcpdump -X -s0 host echo.websocket.org` (Monitors packets to/from echo.websocket.org)
