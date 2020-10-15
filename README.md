@@ -30,3 +30,13 @@ To verify that your websocket server works, you can test it with some tools.
 Or, you can test your server on this web page:
 
 * https://www.websocket.org/echo.html
+
+To monitor all the packets sent to/from the client/server, you can use e.g.
+
+* [Wireshark](https://www.wireshark.org)
+
+For command line debugging, there's
+
+* tcpdump: `sudo tcpdump -A -s0 -ilo0 port 8080 ` (example for local ws:// connection)
+
+* lsof
