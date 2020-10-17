@@ -178,6 +178,7 @@ static WebsocketConnection* CreateConnection(const char* url)
     conn->m_Buffer = (char*)malloc(conn->m_BufferCapacity);
     conn->m_Buffer[0] = 0;
     conn->m_BufferSize = 0;
+    conn->m_ConnectTimeout = 0;
 
     dmURI::Parts uri;
     dmURI::Parse(url, &conn->m_Url);
@@ -194,6 +195,7 @@ static WebsocketConnection* CreateConnection(const char* url)
     conn->m_SSLSocket = 0;
     conn->m_Status = RESULT_OK;
     conn->m_HasHandshakeData = 0;
+    conn->m_WasConnected = 0;
 
 #if defined(HAVE_WSLAY)
     conn->m_Ctx = 0;
@@ -265,12 +267,11 @@ static int LuaConnect(lua_State* L)
 
     const char* url = luaL_checkstring(L, 1);
 
-    // long playedTime = luaL_checktable_number(L, 2, "playedTime", -1);
-    // long progressValue = luaL_checktable_number(L, 2, "progressValue", -1);
-    // char *description = luaL_checktable_string(L, 2, "description", NULL);
-    // char *coverImage = luaL_checktable_string(L, 2, "coverImage", NULL);
-
     WebsocketConnection* conn = CreateConnection(url);
+
+    // milliseconds
+    lua_Number timeout = dmScript::CheckTableNumber(L, 2, "timeout", 3000);
+    conn->m_ConnectTimeout = dmTime::GetTime() + timeout * 1000;
 
     conn->m_Callback = dmScript::CreateCallback(L, 3);
 
@@ -528,6 +529,13 @@ Result PushMessage(WebsocketConnection* conn, MessageType type, int length, cons
     return dmWebsocket::RESULT_OK;
 }
 
+// has the connect procedure taken too long?
+static bool CheckConnectTimeout(WebsocketConnection* conn)
+{
+    uint64_t t = dmTime::GetTime();
+    return t >= conn->m_ConnectTimeout;
+}
+
 static dmExtension::Result OnUpdate(dmExtension::Params* params)
 {
     uint32_t size = g_Websocket.m_Connections.Size();
@@ -544,7 +552,10 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                 conn->m_BufferSize = 0;
             }
 
-            HandleCallback(conn, EVENT_DISCONNECTED, 0, conn->m_BufferSize);
+            if (conn->m_WasConnected)
+            {
+                HandleCallback(conn, EVENT_DISCONNECTED, 0, conn->m_BufferSize);
+            }
 
             g_Websocket.m_Connections.EraseSwap(i);
             --i;
@@ -609,6 +620,12 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
         }
         else if (STATE_HANDSHAKE_READ == conn->m_State)
         {
+            if (CheckConnectTimeout(conn))
+            {
+                CLOSE_CONN("Connect sequence timed out");
+                continue;
+            }
+
             Result result = ReceiveHeaders(conn);
             if (RESULT_WOULDBLOCK == result)
             {
@@ -645,11 +662,18 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 #endif
             dmSocket::SetBlocking(conn->m_Socket, false);
 
+            conn->m_WasConnected = 1;
             SetState(conn, STATE_CONNECTED);
             HandleCallback(conn, EVENT_CONNECTED, 0, 0);
         }
         else if (STATE_HANDSHAKE_WRITE == conn->m_State)
         {
+            if (CheckConnectTimeout(conn))
+            {
+                CLOSE_CONN("Connect sequence timed out");
+                continue;
+            }
+
             Result result = SendClientHandshake(conn);
             if (RESULT_WOULDBLOCK == result)
             {
@@ -665,6 +689,12 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
         }
         else if (STATE_CONNECTING == conn->m_State)
         {
+            if (CheckConnectTimeout(conn))
+            {
+                CLOSE_CONN("Connect sequence timed out");
+                continue;
+            }
+
 #if defined(__EMSCRIPTEN__)
             conn->m_SSLSocket = dmSSLSocket::INVALID_SOCKET_HANDLE;
 

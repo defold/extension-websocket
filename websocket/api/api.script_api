@@ -17,6 +17,9 @@
         type: table
         desc: optional parameters as properties. The following parameters can be set
         members:
+          - name: timeout
+            type: number
+            desc: Timeout for the connection sequence (milliseconds)
 
       - name: callback
         type: function
