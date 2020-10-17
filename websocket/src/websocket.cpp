@@ -325,7 +325,7 @@ static int LuaSend(lua_State* L)
     const char* string = luaL_checklstring(L, 2, &string_length);
 
 #if defined(HAVE_WSLAY)
-    int write_mode = WSLAY_BINARY_FRAME; // or WSLAY_TEXT_FRAME
+    int write_mode = dmScript::CheckTableNumber(L, 3, "type", WSLAY_BINARY_FRAME);
 
     struct wslay_event_msg msg;
     msg.opcode = write_mode;
@@ -395,13 +395,23 @@ static void LuaInit(lua_State* L)
     luaL_register(L, MODULE_NAME, Websocket_module_methods);
 
 #define SETCONSTANT(_X) \
-            lua_pushnumber(L, (lua_Number) _X); \
-            lua_setfield(L, -2, #_X);
+        lua_pushnumber(L, (lua_Number) _X); \
+        lua_setfield(L, -2, #_X);
 
-        SETCONSTANT(EVENT_CONNECTED);
-        SETCONSTANT(EVENT_DISCONNECTED);
-        SETCONSTANT(EVENT_MESSAGE);
-        SETCONSTANT(EVENT_ERROR);
+    SETCONSTANT(EVENT_CONNECTED);
+    SETCONSTANT(EVENT_DISCONNECTED);
+    SETCONSTANT(EVENT_MESSAGE);
+    SETCONSTANT(EVENT_ERROR);
+
+#if defined(HAVE_WSLAY)
+    lua_pushnumber(L, (lua_Number) WSLAY_BINARY_FRAME);
+    lua_setfield(L, -2, "DATA_TYPE_BINARY");
+    lua_pushnumber(L, (lua_Number) WSLAY_TEXT_FRAME);
+    lua_setfield(L, -2, "DATA_TYPE_TEXT");
+#else
+    SETCONSTANT(DATA_TYPE_BINARY);
+    SETCONSTANT(DATA_TYPE_TEXT);
+#endif
 
 #undef SETCONSTANT
 

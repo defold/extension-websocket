@@ -1,8 +1,8 @@
 #include "script_util.h"
 
-namespace dmWebsocket {
+namespace dmScript {
 
-bool luaL_checkbool(lua_State *L, int numArg)
+bool CheckBool(lua_State *L, int numArg)
 {
     bool b = false;
     if (lua_isboolean(L, numArg))
@@ -16,17 +16,17 @@ bool luaL_checkbool(lua_State *L, int numArg)
     return b;
 }
 
-bool luaL_checkboold(lua_State *L, int numArg, int def)
+bool CheckBoold(lua_State *L, int numArg, int def)
 {
     int type = lua_type(L, numArg);
     if (type != LUA_TNONE && type != LUA_TNIL)
     {
-        return luaL_checkbool(L, numArg);
+        return CheckBool(L, numArg);
     }
     return def;
 }
 
-lua_Number luaL_checknumberd(lua_State *L, int numArg, lua_Number def)
+lua_Number CheckNumberd(lua_State *L, int numArg, lua_Number def)
 {
     int type = lua_type(L, numArg);
     if (type != LUA_TNONE && type != LUA_TNIL)
@@ -36,7 +36,7 @@ lua_Number luaL_checknumberd(lua_State *L, int numArg, lua_Number def)
     return def;
 }
 
-char* luaL_checkstringd(lua_State *L, int numArg, const char* def)
+char* CheckStringd(lua_State *L, int numArg, const char* def)
 {
     int type = lua_type(L, numArg);
     if (type != LUA_TNONE && type != LUA_TNIL)
@@ -46,7 +46,7 @@ char* luaL_checkstringd(lua_State *L, int numArg, const char* def)
     return (char*)def;
 }
 
-lua_Number luaL_checktable_number(lua_State *L, int numArg, const char* field, lua_Number def)
+lua_Number CheckTableNumber(lua_State *L, int numArg, const char* field, lua_Number def)
 {
     lua_Number result = def;
     if(lua_istable(L, numArg))
@@ -61,7 +61,7 @@ lua_Number luaL_checktable_number(lua_State *L, int numArg, const char* field, l
     return result;
 }
 
-char* luaL_checktable_string(lua_State *L, int numArg, const char* field, char* def)
+char* CheckTableString(lua_State *L, int numArg, const char* field, char* def)
 {
     char* result = def;
     if(lua_istable(L, numArg))

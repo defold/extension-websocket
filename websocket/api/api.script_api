@@ -113,6 +113,17 @@
       - name: message
         type: string
         desc: the message to send
+      - name: options
+        type: table
+        desc: options for this particular message. May be `nil`
+        members:
+        - name: type
+          type: number
+          desc: The data type of the message
+
+             - `websocket.DATA_TYPE_BINARY` (default)
+
+             - `websocket.DATA_TYPE_TEXT`
 
     examples:
       - desc: |-

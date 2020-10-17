@@ -66,6 +66,12 @@ namespace dmWebsocket
         MESSAGE_TYPE_CLOSE  = 1,
     };
 
+    enum DataType
+    {
+        DATA_TYPE_BINARY = 0,
+        DATA_TYPE_TEXT   = 1,
+    };
+
     struct Message
     {
         uint32_t m_Length:30;
