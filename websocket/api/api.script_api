@@ -19,7 +19,7 @@
         members:
           - name: timeout
             type: number
-            desc: Timeout for the connection sequence (milliseconds)
+            desc: Timeout for the connection sequence (milliseconds). Default: 3000
 
       - name: callback
         type: function
