@@ -54,9 +54,17 @@ static Result SendClientHandshakeHeaders(WebsocketConnection* conn)
     WS_SENDALL("\r\n");
     WS_SENDALL("Sec-WebSocket-Version: 13\r\n");
 
-    // Add custom protocols
-
-    // Add custom headers
+    if (conn->m_CustomHeaders)
+    {
+        WS_SENDALL(conn->m_CustomHeaders);
+        // make sure we ended with '\r\n'
+        int len = strlen(conn->m_CustomHeaders);
+        bool ended_with_sentinel = len >= 2 && conn->m_CustomHeaders[len - 2] == '\r' && conn->m_CustomHeaders[len - 1] == '\n';
+        if (!ended_with_sentinel)
+        {
+            WS_SENDALL("\r\n");
+        }
+    }
 
     WS_SENDALL("\r\n");
 

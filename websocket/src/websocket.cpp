@@ -211,6 +211,8 @@ static void DestroyConnection(WebsocketConnection* conn)
         WSL_Exit(conn->m_Ctx);
 #endif
 
+    free((void*)conn->m_CustomHeaders);
+
     if (conn->m_Callback)
         dmScript::DestroyCallback(conn->m_Callback);
 
@@ -228,6 +230,7 @@ static void DestroyConnection(WebsocketConnection* conn)
 
     free((void*)conn->m_Buffer);
     delete conn;
+    DebugLog(2, "DestroyConnection: %p", conn);
 }
 
 
@@ -266,12 +269,20 @@ static int LuaConnect(lua_State* L)
         return DM_LUA_ERROR("The web socket module isn't initialized");
 
     const char* url = luaL_checkstring(L, 1);
+    lua_Number timeout = dmScript::CheckTableNumber(L, 2, "timeout", 3000);
+    const char* custom_headers = dmScript::CheckTableString(L, 2, "headers", 0);
+
+    if (custom_headers != 0)
+    {
+        if (strstr(custom_headers, "\r\n\r\n") != 0)
+        {
+            return DM_LUA_ERROR("The header field must not contain double '\\r\\n\\r\\n': '%s'", custom_headers);
+        }
+    }
 
     WebsocketConnection* conn = CreateConnection(url);
-
-    // milliseconds
-    lua_Number timeout = dmScript::CheckTableNumber(L, 2, "timeout", 3000);
     conn->m_ConnectTimeout = dmTime::GetTime() + timeout * 1000;
+    conn->m_CustomHeaders = custom_headers ? strdup(custom_headers) : 0;
 
     conn->m_Callback = dmScript::CreateCallback(L, 3);
 
