@@ -89,6 +89,7 @@ namespace dmWebsocket
         dmSocket::Socket                m_Socket;
         dmSSLSocket::Socket             m_SSLSocket;
         dmArray<Message>                m_Messages; // lengths of the messages in the data buffer
+        uint64_t                        m_ConnectTimeout;
         uint8_t                         m_Key[16];
         State                           m_State;
         char*                           m_Buffer;
@@ -97,6 +98,7 @@ namespace dmWebsocket
         Result                          m_Status;
         uint8_t                         m_SSL:1;
         uint8_t                         m_HasHandshakeData:1;
+        uint8_t                         m_WasConnected:1;
         uint8_t                         :6;
     };
 

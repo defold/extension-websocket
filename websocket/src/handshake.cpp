@@ -105,13 +105,13 @@ Result ReceiveHeaders(WebsocketConnection* conn)
     dmSocket::SelectorZero(&selector);
     dmSocket::SelectorSet(&selector, dmSocket::SELECTOR_KIND_READ, conn->m_Socket);
 
-    dmSocket::Result sr = dmSocket::Select(&selector, 200*1000);
+    dmSocket::Result sr = dmSocket::Select(&selector, SOCKET_WAIT_TIMEOUT);
 
     if (dmSocket::RESULT_OK != sr)
     {
         if (dmSocket::RESULT_WOULDBLOCK)
         {
-            dmLogWarning("Waiting for socket to be available for reading");
+            DebugLog(1, "Waiting for socket to be available for reading");
             return RESULT_WOULDBLOCK;
         }
 
