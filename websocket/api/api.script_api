@@ -19,7 +19,11 @@
         members:
           - name: timeout
             type: number
-            desc: Timeout for the connection sequence (milliseconds). Default: 3000
+            desc: Timeout for the connection sequence (milliseconds). Not used on HTML5. Default: 3000
+
+          - name: headers
+            type: string
+            desc: list of http headers. Each pair is separated with "\r\n". Not used on HTML5.
 
       - name: callback
         type: function
@@ -83,7 +87,10 @@
 
               function init(self)
                 self.url = "ws://echo.websocket.org"
-                local params = {}
+                local params = {
+                  timeout = 3000,
+                  headers = "Sec-WebSocket-Protocol: chat\r\nOrigin: mydomain.com\r\n"
+                }
                 self.connection = websocket.connect(self.url, params, websocket_callback)
               end
 
