@@ -19,7 +19,7 @@
         members:
           - name: timeout
             type: number
-            desc: Timeout for the connection sequence (milliseconds). Not used on HTML5. Default: 3000
+            desc: Timeout for the connection sequence (milliseconds). Not used on HTML5. (Default is 3000)
 
           - name: headers
             type: string
