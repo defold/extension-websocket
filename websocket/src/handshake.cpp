@@ -109,12 +109,7 @@ Result ReceiveHeaders(WebsocketConnection* conn)
 #else
 Result ReceiveHeaders(WebsocketConnection* conn)
 {
-    dmSocket::Selector selector;
-    dmSocket::SelectorZero(&selector);
-    dmSocket::SelectorSet(&selector, dmSocket::SELECTOR_KIND_READ, conn->m_Socket);
-
-    dmSocket::Result sr = dmSocket::Select(&selector, SOCKET_WAIT_TIMEOUT);
-
+    dmSocket::Result sr = WaitForSocket(conn, dmSocket::SELECTOR_KIND_READ, SOCKET_WAIT_TIMEOUT);
     if (dmSocket::RESULT_OK != sr)
     {
         if (dmSocket::RESULT_WOULDBLOCK)
