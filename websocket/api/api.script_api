@@ -59,11 +59,7 @@
 
           - name: message
             type: string
-            desc: The received data. Only valid if event is `websocket.EVENT_MESSAGE`
-
-          - name: error
-            type: string
-            desc: The error string. Only valid if event is `websocket.EVENT_ERROR`
+            desc: The received data if event is `websocket.EVENT_MESSAGE`. Error message otherwise
 
 
     returns:
@@ -83,7 +79,7 @@
                   update_gui(self)
                   log("Connected: " .. tostring(conn))
                 elseif data.event == websocket.EVENT_ERROR then
-                  log("Error: '" .. data.error .. "'")
+                  log("Error: '" .. data.message .. "'")
                 elseif data.event == websocket.EVENT_MESSAGE then
                   log("Receiving: '" .. tostring(data.message) .. "'")
                 end
