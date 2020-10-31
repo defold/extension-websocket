@@ -66,6 +66,12 @@ static Result SendClientHandshakeHeaders(WebsocketConnection* conn)
         }
     }
 
+    if (conn->m_Protocol) {
+        WS_SENDALL("Sec-WebSocket-Protocol: ");
+        WS_SENDALL(conn->m_Protocol);
+        WS_SENDALL("\r\n");
+    }
+
     WS_SENDALL("\r\n");
 
 bail:
@@ -114,7 +120,7 @@ Result ReceiveHeaders(WebsocketConnection* conn)
     {
         if (dmSocket::RESULT_WOULDBLOCK)
         {
-            DebugLog(1, "Waiting for socket to be available for reading");
+            DebugLog(2, "Waiting for socket to be available for reading");
             return RESULT_WOULDBLOCK;
         }
 
@@ -197,9 +203,6 @@ Result VerifyHeaders(WebsocketConnection* conn)
     bool connection = false;
     bool upgrade = false;
     bool valid_key = false;
-    const char* protocol = "";
-
-    // TODO: Perhaps also support the Sec-WebSocket-Protocol
 
     // parse the headers in place
     while (r < endtag)
