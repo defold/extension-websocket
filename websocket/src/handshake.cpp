@@ -40,8 +40,12 @@ static Result SendClientHandshakeHeaders(WebsocketConnection* conn)
         dmSnPrintf(port, sizeof(port), ":%d", conn->m_Url.m_Port);
 
     dmSocket::Result sr;
-    WS_SENDALL("GET /");
-    WS_SENDALL(conn->m_Url.m_Path);
+    WS_SENDALL("GET ");
+    if (conn->m_Url.m_Path[0] == '\0') {
+        WS_SENDALL("/"); // Default to / for empty path
+    } else {
+        WS_SENDALL(conn->m_Url.m_Path);
+    }
     WS_SENDALL(" HTTP/1.1\r\n");
     WS_SENDALL("Host: ");
     WS_SENDALL(conn->m_Url.m_Hostname);
