@@ -91,6 +91,7 @@ namespace dmWebsocket
         dmArray<Message>                m_Messages; // lengths of the messages in the data buffer
         uint64_t                        m_ConnectTimeout;
         uint8_t                         m_Key[16];
+        const char*                     m_Protocol;
         const char*                     m_CustomHeaders;
         State                           m_State;
         char*                           m_Buffer;

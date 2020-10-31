@@ -212,6 +212,7 @@ static void DestroyConnection(WebsocketConnection* conn)
 #endif
 
     free((void*)conn->m_CustomHeaders);
+    free((void*)conn->m_Protocol);
 
     if (conn->m_Callback)
         dmScript::DestroyCallback(conn->m_Callback);
@@ -271,6 +272,7 @@ static int LuaConnect(lua_State* L)
     const char* url = luaL_checkstring(L, 1);
     lua_Number timeout = dmScript::CheckTableNumber(L, 2, "timeout", 3000);
     const char* custom_headers = dmScript::CheckTableString(L, 2, "headers", 0);
+    const char* protocol = dmScript::CheckTableString(L, 2, "protocol", 0);
 
     if (custom_headers != 0)
     {
@@ -283,6 +285,7 @@ static int LuaConnect(lua_State* L)
     WebsocketConnection* conn = CreateConnection(url);
     conn->m_ConnectTimeout = dmTime::GetTime() + timeout * 1000;
     conn->m_CustomHeaders = custom_headers ? strdup(custom_headers) : 0;
+    conn->m_Protocol = protocol ? strdup(protocol) : 0;
 
     conn->m_Callback = dmScript::CreateCallback(L, 3);
 
@@ -708,6 +711,13 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 
 #if defined(__EMSCRIPTEN__)
             conn->m_SSLSocket = dmSSLSocket::INVALID_SOCKET_HANDLE;
+
+            if (conn->m_Protocol) {
+                EM_ASM({
+                    // https://emscripten.org/docs/porting/networking.html#emulated-posix-tcp-sockets-over-websockets
+                    Module["websocket"]["subprotocol"] = UTF8ToString($0);
+                }, conn->m_Protocol);
+            }
 
             char uri_buffer[dmURI::MAX_URI_LEN];
             const char* uri;
