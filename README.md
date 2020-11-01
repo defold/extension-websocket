@@ -40,3 +40,9 @@ For command line debugging, there's
 * tcpdump: `sudo tcpdump -X -s0 -ilo0 port 8080 ` (example for local ws:// connection)
 
 * tcpdump: `sudo tcpdump -X -s0 host echo.websocket.org` (Monitors packets to/from echo.websocket.org)
+
+## Credits
+
+This extension makes use of the C library WSlay by @tatsuhiro-t:
+
+* https://github.com/tatsuhiro-t/wslay
