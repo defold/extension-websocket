@@ -23,7 +23,7 @@
 
           - name: protocol
             type: string
-            desc: the protocol to use (e.g. 'chat'). (Default is 'binary')
+            desc: the protocol to use (e.g. 'chat'). If not set, no `Sec-WebSocket-Protocol` header is sent.
 
           - name: headers
             type: string
