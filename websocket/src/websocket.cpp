@@ -712,12 +712,10 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 #if defined(__EMSCRIPTEN__)
             conn->m_SSLSocket = dmSSLSocket::INVALID_SOCKET_HANDLE;
 
-            if (conn->m_Protocol) {
-                EM_ASM({
-                    // https://emscripten.org/docs/porting/networking.html#emulated-posix-tcp-sockets-over-websockets
-                    Module["websocket"]["subprotocol"] = UTF8ToString($0);
-                }, conn->m_Protocol);
-            }
+            EM_ASM({
+                // https://emscripten.org/docs/porting/networking.html#emulated-posix-tcp-sockets-over-websockets
+                Module["websocket"]["subprotocol"] = $0 ? UTF8ToString($0) : null;
+            }, conn->m_Protocol);
 
             char uri_buffer[dmURI::MAX_URI_LEN];
             const char* uri;
