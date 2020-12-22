@@ -509,6 +509,12 @@ static dmExtension::Result AppFinalize(dmExtension::AppParams* params)
 
 static dmExtension::Result Finalize(dmExtension::Params* params)
 {
+    while (!g_Websocket.m_Connections.Empty())
+    {
+        WebsocketConnection* conn = g_Websocket.m_Connections.Back();
+        g_Websocket.m_Connections.Pop();
+        DestroyConnection(conn);
+    }
     return dmExtension::RESULT_OK;
 }
 
