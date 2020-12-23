@@ -20,7 +20,7 @@ jobs:
             path: '${{env.VERSION_FILENAME}}'
             prop_path: 'sha1'
 
-      - name: Set DEFOLD_VERSION
+      - name: Set version variable
         uses: allenevans/set-env@v2.0.0
         with:
           DEFOLD_VERSION: '${{steps.defold_version.outputs.prop}}'
@@ -31,7 +31,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: bob.jar
-          key: 'bob-${DEFOLD_VERSION}'
+          key: bob-${DEFOLD_VERSION}
 
 
   build_with_bob:
@@ -51,7 +51,7 @@ jobs:
         with:
             path: '${{env.VERSION_FILENAME}}'
             prop_path: 'sha1'
-      - name: Set DEFOLD_VERSION
+      - name: Set version variable
         uses: allenevans/set-env@v2.0.0
         with:
           DEFOLD_VERSION: '${{steps.defold_version.outputs.prop}}'
@@ -65,7 +65,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: bob.jar
-          key: 'bob-${DEFOLD_VERSION}'
+          key: bob-${DEFOLD_VERSION}
 
       - run: java -jar bob.jar --version
       - run: java -jar bob.jar resolve --email a@b.com --auth 123456
@@ -88,7 +88,7 @@ jobs:
         with:
             path: '${{env.VERSION_FILENAME}}'
             prop_path: 'sha1'
-      - name: Set DEFOLD_VERSION
+      - name: Set version variable
         uses: allenevans/set-env@v2.0.0
         with:
           DEFOLD_VERSION: '${{steps.defold_version.outputs.prop}}'
@@ -102,7 +102,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: bob.jar
-          key: 'bob-${DEFOLD_VERSION}'
+          key: bob-${DEFOLD_VERSION}
 
       - run: java -jar bob.jar --version
       - run: java -jar bob.jar resolve --email a@b.com --auth 123456
