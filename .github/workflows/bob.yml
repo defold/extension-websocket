@@ -34,7 +34,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: bob.jar
-          key: 'bob-${{DEFOLD_VERSION}}'
+          key: 'bob-${DEFOLD_VERSION}'
 
 
   build_with_bob:
@@ -61,7 +61,7 @@ jobs:
           path: |
             ${{env.FILENAME_VERSION}}
             bob.jar
-          key: 'bob-${{DEFOLD_VERSION}}'
+          key: 'bob-${DEFOLD_VERSION}'
 
       - run: java -jar bob.jar --version
 
