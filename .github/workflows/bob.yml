@@ -70,5 +70,5 @@ jobs:
 
       - run: java -jar bob.jar --version
       - run: java -jar bob.jar resolve --email a@b.com --auth 123456
-      - run: java -jar bob.jar build --archive --build-server=${{env.BUILD_SERVER}} bundle --platform=${{ matrix.platform }} --architectures=${{ matrix.platform }}
+      - run: java -jar bob.jar build --archive --build-server=${{env.BUILD_SERVER}} --platform=${{ matrix.platform }} --architectures=${{ matrix.platform }}
 
