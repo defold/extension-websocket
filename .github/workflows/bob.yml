@@ -19,12 +19,13 @@ jobs:
         with:
             path: '${{env.VERSION_FILENAME}}'
             prop_path: 'sha1'
-
-      - name: Set version variable
-        uses: allenevans/set-env@v2.0.0
-        with:
-          DEFOLD_VERSION: '${{steps.defold_version.outputs.prop}}'
-      # - run: echo "Found version '${DEFOLD_VERSION}'"
+      - name: Set env
+        run: echo "DEFOLD_VERSION=${{steps.defold_version.outputs.prop}}" >> $GITHUB_ENV
+      # - name: Set version variable
+      #   uses: allenevans/set-env@v2.0.0
+      #   with:
+      #     DEFOLD_VERSION: '${{steps.defold_version.outputs.prop}}'
+      - run: echo "Found version ${{env.DEFOLD_VERSION}}"
       # - run: wget -q http://d.defold.com/archive/stable/${DEFOLD_VERSION}/bob/bob.jar
 
       # - name: Cache dependencies (upload)
