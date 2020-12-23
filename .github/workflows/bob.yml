@@ -62,7 +62,8 @@ jobs:
 
       - name: Download bob.jar
         run: |
-          wget -q -O http://d.defold.com/archive/stable/${{env.DEFOLD_VERSION}}/bob/bob.jar
+          wget -q http://d.defold.com/archive/stable/${{env.DEFOLD_VERSION}}/bob/bob.jar
+          ls -la
           java -jar bob.jar --version
 
       # - run: wget http://d.defold.com/stable/${{env.VERSION_FILENAME}}
