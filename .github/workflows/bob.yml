@@ -21,7 +21,7 @@ jobs:
             prop_path: 'sha1'
       - name: Set env
         run: |
-          TMPVAR=`GOO=`curl -s http://d.defold.com/stable/info.json | jq -r '.sha1'`
+          TMPVAR=`curl -s http://d.defold.com/stable/info.json | jq -r '.sha1'`
           echo "DEFOLD_VERSION=${TMPVAR}" >> $GITHUB_ENV
       # - name: Set version variable
       #   uses: allenevans/set-env@v2.0.0
