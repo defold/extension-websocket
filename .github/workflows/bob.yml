@@ -10,13 +10,13 @@ jobs:
   download_bob:
     runs-on: ubuntu-latest
     steps:
-      - run: wget http://d.defold.com/stable/${{FILENAME_VERSION}}
+      - run: wget http://d.defold.com/stable/${{env.FILENAME_VERSION}}
 
       - name: Parse bob version
         id: defold_version
         uses: notiz-dev/github-action-json-property@release
         with:
-            path: '${{FILENAME_VERSION}}'
+            path: '${{env.FILENAME_VERSION}}'
             prop_path: 'sha1'
 
       - name: Set DEFOLD_VERSION
@@ -47,11 +47,15 @@ jobs:
           java-version: '11.0.2'
           java-package: jre
 
+      - name: Printenv
+        run: |
+          printenv
+
       - name: Cache dependencies (download)
         uses: actions/cache@v2
         with:
           path: |
-            ${{FILENAME_VERSION}}
+            ${{env.FILENAME_VERSION}}
             bob.jar
           key: bob-${DEFOLD_VERSION}
 
