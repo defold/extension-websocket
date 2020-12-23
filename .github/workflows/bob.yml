@@ -3,20 +3,20 @@ name: Build with bob
 on: [push]
 
 env:
-  FILENAME_VERSION: 'info.json'
+  VERSION_FILENAME: 'info.json'
   BUILD_SERVER: 'https://build.defold.com'
 
 jobs:
   download_bob:
     runs-on: ubuntu-latest
     steps:
-      - run: wget http://d.defold.com/stable/${{env.FILENAME_VERSION}}
+      - run: wget http://d.defold.com/stable/${{env.VERSION_FILENAME}}
 
       - name: Parse bob version
         id: defold_version
         uses: notiz-dev/github-action-json-property@release
         with:
-            path: '${{env.FILENAME_VERSION}}'
+            path: '${{env.VERSION_FILENAME}}'
             prop_path: 'sha1'
 
       - name: Set DEFOLD_VERSION
@@ -45,6 +45,19 @@ jobs:
         platform: [x86_64-darwin]
     runs-on: ubuntu-latest
     steps:
+
+      - run: wget http://d.defold.com/stable/${{env.VERSION_FILENAME}}
+      - name: Parse bob version
+        id: defold_version
+        uses: notiz-dev/github-action-json-property@release
+        with:
+            path: '${{env.VERSION_FILENAME}}'
+            prop_path: 'sha1'
+      - name: Set DEFOLD_VERSION
+        uses: allenevans/set-env@v2.0.0
+        with:
+          DEFOLD_VERSION: '${{steps.defold_version.outputs.prop}}'
+
       - uses: actions/checkout@v2
       - uses: actions/setup-java@v1
         with:
@@ -58,9 +71,7 @@ jobs:
       - name: Cache dependencies (download)
         uses: actions/cache@v2
         with:
-          path: |
-            ${{env.FILENAME_VERSION}}
-            bob.jar
+          path: bob.jar
           key: 'bob-${DEFOLD_VERSION}'
 
       - run: java -jar bob.jar --version
