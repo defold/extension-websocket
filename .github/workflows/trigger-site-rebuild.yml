@@ -1,6 +1,9 @@
 name: Trigger site rebuild
 
-on: [push]
+on:
+  push:
+     branches:
+       - 'master'
 
 jobs:
     site-rebuild:
