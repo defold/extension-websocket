@@ -27,11 +27,11 @@ jobs:
       - run: echo "Found version '${DEFOLD_VERSION}'"
       - run: wget -q http://d.defold.com/archive/stable/${DEFOLD_VERSION}/bob/bob.jar
 
-      # - name: Cache dependencies (upload)
-      #   uses: actions/cache@v2
-      #   with:
-      #     path: bob.jar
-      #     key: bob-${DEFOLD_VERSION}
+      - name: Cache dependencies (upload)
+        uses: actions/cache@v2
+        with:
+          path: bob.jar
+          key: bob-${DEFOLD_VERSION}
 
 
   # build_with_bob:
