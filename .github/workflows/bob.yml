@@ -11,24 +11,26 @@ jobs:
     runs-on: ubuntu-latest
     name: Download Bob
     steps:
-      - run: wget http://d.defold.com/stable/${{env.VERSION_FILENAME}}
+      # - run: wget http://d.defold.com/stable/${{env.VERSION_FILENAME}}
 
-      - name: Parse bob version
-        id: defold_version
-        uses: notiz-dev/github-action-json-property@release
-        with:
-            path: '${{env.VERSION_FILENAME}}'
-            prop_path: 'sha1'
-      - name: Set env
+      # - name: Parse bob version
+      #   id: defold_version
+      #   uses: notiz-dev/github-action-json-property@release
+      #   with:
+      #       path: '${{env.VERSION_FILENAME}}'
+      #       prop_path: 'sha1'
+      - name: Get Defold version
         run: |
           TMPVAR=`curl -s http://d.defold.com/stable/info.json | jq -r '.sha1'`
           echo "DEFOLD_VERSION=${TMPVAR}" >> $GITHUB_ENV
+          echo "Found version ${TMPVAR}"
+
       # - name: Set version variable
       #   uses: allenevans/set-env@v2.0.0
       #   with:
       #     DEFOLD_VERSION: '${{steps.defold_version.outputs.prop}}'
-      - run: echo "Found version ${{env.DEFOLD_VERSION}}"
-      # - run: wget -q http://d.defold.com/archive/stable/${DEFOLD_VERSION}/bob/bob.jar
+      - name: Download bob.jar
+        run: wget -q http://d.defold.com/archive/stable/${{env.DEFOLD_VERSION}}/bob/bob.jar
 
       # - name: Cache dependencies (upload)
       #   uses: actions/cache@v2
