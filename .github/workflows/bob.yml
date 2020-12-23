@@ -38,7 +38,7 @@ jobs:
     needs: [download_bob]
     strategy:
       matrix:
-        platform: [armv7-android, armv7-darwin, x86_64-darwin, x86_64-win32, x86-win32, x86_64-linux, js-web]
+        platform: [armv7-android, arm64-android, armv7-darwin, arm64-darwin, x86_64-darwin, x86_64-linux, x86_64-win32, x86-win32, js-web, wasm-web]
     runs-on: ubuntu-latest
 
     name: Build
@@ -70,4 +70,5 @@ jobs:
 
       - run: java -jar bob.jar --version
       - run: java -jar bob.jar resolve --email a@b.com --auth 123456
-      - run: java -jar bob.jar build --archive --build-server=${{env.BUILD_SERVER}} bundle --platform=${{ matrix.platform }}
+      - run: java -jar bob.jar build --archive --build-server=${{env.BUILD_SERVER}} bundle --platform=${{ matrix.platform }} --architectures=${{ matrix.platform }}
+
