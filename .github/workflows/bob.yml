@@ -1,6 +1,11 @@
 name: Build with bob
 
-on: [push, pull_request_target]
+on:
+  push:
+  pull_request_target:
+  schedule:
+    # nightly at 05:00 on the 1st and 15th
+    - cron: 0 5 1,15 * *
 
 env:
   VERSION_FILENAME: 'info.json'
@@ -32,13 +37,13 @@ jobs:
           java -jar bob.jar --version
 
       - name: Resolve libraries
-        run: java -jar bob.jar resolve --email a@b.com --auth 123456
+        run: java -jar bob.jar resolve
       - name: Build
         run: java -jar bob.jar --platform=${{ matrix.platform }} build --archive --build-server=${{env.BUILD_SERVER}}
       - name: Bundle
         run: java -jar bob.jar --platform=${{ matrix.platform }} bundle
 
-  # not technically needed for building, but we want to test bundling as well, since we're also testing the manifest merging
+  # macOS is not technically needed for building, but we want to test bundling as well, since we're also testing the manifest merging
   build_with_bob_macos:
     strategy:
       matrix:
