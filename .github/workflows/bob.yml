@@ -1,6 +1,6 @@
 name: Build with bob
 
-on: [push]
+on: [push, pull_request_target]
 
 env:
   VERSION_FILENAME: 'info.json'
@@ -64,7 +64,7 @@ jobs:
           java -jar bob.jar --version
 
       - name: Resolve libraries
-        run: java -jar bob.jar resolve --email a@b.com --auth 123456
+        run: java -jar bob.jar resolve
       - name: Build
         run: java -jar bob.jar --platform=${{ matrix.platform }} build --archive --build-server=${{env.BUILD_SERVER}}
       - name: Bundle
