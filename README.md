@@ -2,7 +2,7 @@
 
 # Defold websocket extension
 
-![https://github.com/defold/extension-websocket/workflows/Build%20with%20bob/badge.svg](https://github.com/defold/extension-websocket/actions)
+[![Build Status](https://github.com/defold/extension-websocket/workflows/Build%20with%20bob/badge.svg)](https://github.com/defold/extension-websocket/actions)
 
 ## Installation
 To use this library in your Defold project, add the following URL to your `game.project` dependencies:
