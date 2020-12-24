@@ -37,7 +37,7 @@ jobs:
           java -jar bob.jar --version
 
       - name: Resolve libraries
-        run: java -jar bob.jar resolve
+        run: java -jar bob.jar resolve --email a@b.com --auth 123456
       - name: Build
         run: java -jar bob.jar --platform=${{ matrix.platform }} build --archive --build-server=${{env.BUILD_SERVER}}
       - name: Bundle
@@ -69,7 +69,7 @@ jobs:
           java -jar bob.jar --version
 
       - name: Resolve libraries
-        run: java -jar bob.jar resolve
+        run: java -jar bob.jar resolve --email a@b.com --auth 123456
       - name: Build
         run: java -jar bob.jar --platform=${{ matrix.platform }} build --archive --build-server=${{env.BUILD_SERVER}}
       - name: Bundle
