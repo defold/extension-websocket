@@ -73,7 +73,7 @@ local function websocket_callback(self, conn, data)
 		update_gui(self)
 		log("Connected: " .. tostring(conn))
 	elseif data.event == websocket.EVENT_ERROR then
-		log("Error: '" .. data.error .. "'")
+		log("Error: '" .. tostring(data.error) .. "'")
 	elseif data.event == websocket.EVENT_MESSAGE then
 		log("Receiving: '" .. tostring(data.message) .. "'")
 	end
