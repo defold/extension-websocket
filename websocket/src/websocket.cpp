@@ -195,7 +195,6 @@ static WebsocketConnection* CreateConnection(const char* url)
     conn->m_SSLSocket = 0;
     conn->m_Status = RESULT_OK;
     conn->m_HasHandshakeData = 0;
-    conn->m_WasConnected = 0;
 
 #if defined(HAVE_WSLAY)
     conn->m_Ctx = 0;
@@ -572,10 +571,7 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                 conn->m_BufferSize = 0;
             }
 
-            if (conn->m_WasConnected)
-            {
-                HandleCallback(conn, EVENT_DISCONNECTED, 0, conn->m_BufferSize);
-            }
+            HandleCallback(conn, EVENT_DISCONNECTED, 0, conn->m_BufferSize);
 
             g_Websocket.m_Connections.EraseSwap(i);
             --i;
@@ -682,7 +678,6 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 #endif
             dmSocket::SetBlocking(conn->m_Socket, false);
 
-            conn->m_WasConnected = 1;
             SetState(conn, STATE_CONNECTED);
             HandleCallback(conn, EVENT_CONNECTED, 0, 0);
         }

@@ -100,8 +100,7 @@ namespace dmWebsocket
         Result                          m_Status;
         uint8_t                         m_SSL:1;
         uint8_t                         m_HasHandshakeData:1;
-        uint8_t                         m_WasConnected:1;
-        uint8_t                         :6;
+        uint8_t                         :7;
     };
 
     // Set error message
