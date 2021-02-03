@@ -256,13 +256,13 @@ Result VerifyHeaders(WebsocketConnection* conn)
         return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Wrong response status: %i", response->m_ResponseStatusCode);
     }
 
-    HttpHeader *connection_header, *upgrade_header, *websoket_secret_header;
+    HttpHeader *connection_header, *upgrade_header, *websocket_secret_header;
     connection_header = response->GetHeader("Connection");
     upgrade_header = response->GetHeader("Upgrade");
-    websoket_secret_header = response->GetHeader("Sec-WebSocket-Accept");
+    websocket_secret_header = response->GetHeader("Sec-WebSocket-Accept");
     bool connection = connection_header && dmStriCmp(connection_header->m_Value, "Upgrade") == 0;
     bool upgrade  = upgrade_header && dmStriCmp(upgrade_header->m_Value, "websocket") == 0;
-    bool valid_key = websoket_secret_header && ValidateSecretKey(conn, websoket_secret_header->m_Value);
+    bool valid_key = websocket_secret_header && ValidateSecretKey(conn, websocket_secret_header->m_Value);
 
     // Send error to lua?
     if (!connection)

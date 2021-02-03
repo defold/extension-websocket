@@ -82,8 +82,6 @@ namespace dmWebsocket
     {
         const char* m_Key;
         const char* m_Value;
-
-        HttpHeader() = delete;
         HttpHeader(const char* key, const char* value);
         ~HttpHeader();
     };
@@ -96,7 +94,6 @@ namespace dmWebsocket
         int m_BodyOffset;
         dmArray<HttpHeader*> m_Headers;
 
-        HandshakeResponse() = default;
         ~HandshakeResponse();
         HttpHeader* GetHeader(const char* header);
     };
