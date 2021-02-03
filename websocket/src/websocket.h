@@ -78,6 +78,30 @@ namespace dmWebsocket
         uint32_t m_Type:2;
     };
 
+    struct HttpHeader
+    {
+        const char* m_Key;
+        const char* m_Value;
+
+        HttpHeader() = delete;
+        HttpHeader(const char* key, const char* value);
+        ~HttpHeader();
+    };
+
+    struct HandshakeResponse
+    {
+        int m_HttpMajor;
+        int m_HttpMinor;
+        int m_ResponseStatusCode;
+        int m_BodyOffset;
+        dmArray<HttpHeader*> m_Headers;
+
+        HandshakeResponse() = default;
+        ~HandshakeResponse();
+        HttpHeader* GetHeader(const char* header);
+    };
+
+
     struct WebsocketConnection
     {
         dmScript::LuaCallbackInfo*      m_Callback;
@@ -101,6 +125,7 @@ namespace dmWebsocket
         uint8_t                         m_SSL:1;
         uint8_t                         m_HasHandshakeData:1;
         uint8_t                         :7;
+        HandshakeResponse*              m_HandshakeResponse;
     };
 
     // Set error message
@@ -148,16 +173,6 @@ namespace dmWebsocket
     void DebugLog(int level, const char* fmt, ...);
 #endif
 
+    int dmStriCmp(const char* s1, const char* s2);
     void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_bytes);
 }
-
-
-
-
-
-
-
-
-
-
-
