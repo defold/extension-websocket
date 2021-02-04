@@ -35,9 +35,6 @@ struct WebsocketContext
 } g_Websocket;
 
 
-static void HandleCallback(WebsocketConnection* conn, int event);
-
-
 #define STRING_CASE(_X) case _X: return #_X;
 
 const char* ResultToString(Result err)
@@ -193,7 +190,6 @@ static WebsocketConnection* CreateConnection(const char* url)
     conn->m_BufferSize = 0;
     conn->m_ConnectTimeout = 0;
 
-    dmURI::Parts uri;
     dmURI::Parse(url, &conn->m_Url);
 
     if (strcmp(conn->m_Url.m_Scheme, "https") == 0)
@@ -253,8 +249,6 @@ static void DestroyConnection(WebsocketConnection* conn)
 
 static void CloseConnection(WebsocketConnection* conn)
 {
-    State prev_state = conn->m_State;
-
     // we want it to send this message in the polling
     if (conn->m_State == STATE_CONNECTED) {
 #if defined(HAVE_WSLAY)
