@@ -35,9 +35,6 @@ struct WebsocketContext
 } g_Websocket;
 
 
-static void HandleCallback(WebsocketConnection* conn, int event);
-
-
 #define STRING_CASE(_X) case _X: return #_X;
 
 const char* ResultToString(Result err)
@@ -66,6 +63,19 @@ const char* StateToString(State err)
 }
 
 #undef STRING_CASE
+
+int dmStriCmp(const char* s1, const char* s2)
+{
+    for (;;)
+    {
+        if (!*s1 || !*s2 || tolower((unsigned char) *s1) != tolower((unsigned char) *s2))
+        {
+            return (unsigned char) *s1 - (unsigned char) *s2;
+        }
+        s1++;
+        s2++;
+    }
+}
 
 void DebugLog(int level, const char* fmt, ...)
 {
@@ -180,7 +190,6 @@ static WebsocketConnection* CreateConnection(const char* url)
     conn->m_BufferSize = 0;
     conn->m_ConnectTimeout = 0;
 
-    dmURI::Parts uri;
     dmURI::Parse(url, &conn->m_Url);
 
     if (strcmp(conn->m_Url.m_Scheme, "https") == 0)
@@ -195,6 +204,7 @@ static WebsocketConnection* CreateConnection(const char* url)
     conn->m_SSLSocket = 0;
     conn->m_Status = RESULT_OK;
     conn->m_HasHandshakeData = 0;
+    conn->m_HandshakeResponse = 0;
 
 #if defined(HAVE_WSLAY)
     conn->m_Ctx = 0;
@@ -227,6 +237,9 @@ static void DestroyConnection(WebsocketConnection* conn)
         dmConnectionPool::Return(g_Websocket.m_Pool, conn->m_Connection);
 #endif
 
+    if (conn->m_HandshakeResponse)
+        delete conn->m_HandshakeResponse;
+
 
     free((void*)conn->m_Buffer);
     delete conn;
@@ -236,8 +249,6 @@ static void DestroyConnection(WebsocketConnection* conn)
 
 static void CloseConnection(WebsocketConnection* conn)
 {
-    State prev_state = conn->m_State;
-
     // we want it to send this message in the polling
     if (conn->m_State == STATE_CONNECTED) {
 #if defined(HAVE_WSLAY)
@@ -383,9 +394,71 @@ static void HandleCallback(WebsocketConnection* conn, int event, int msg_offset,
     lua_pushlstring(L, conn->m_Buffer + msg_offset, msg_length);
     lua_setfield(L, -2, "message");
 
+    if(conn->m_HandshakeResponse)
+    {
+        HandshakeResponse* response = conn->m_HandshakeResponse;
+
+        lua_newtable(L);
+
+        lua_pushnumber(L, response->m_ResponseStatusCode);
+        lua_setfield(L, -2, "status");
+
+        lua_pushstring(L, &conn->m_Buffer[response->m_BodyOffset]);
+        lua_setfield(L, -2, "response");
+
+        lua_newtable(L);
+        for (uint32_t i = 0; i < response->m_Headers.Size(); ++i)
+        {
+            lua_pushstring(L, response->m_Headers[i]->m_Value);
+            lua_setfield(L, -2, response->m_Headers[i]->m_Key);
+        }
+        lua_setfield(L, -2, "headers");
+
+        lua_setfield(L, -2, "handshake_response");
+
+        delete conn->m_HandshakeResponse;
+        conn->m_HandshakeResponse = 0;
+    }
+
     dmScript::PCall(L, 3, 0);
 
     dmScript::TeardownCallback(conn->m_Callback);
+}
+
+
+HttpHeader::HttpHeader(const char* key, const char* value)
+{
+    m_Key = strdup(key);
+    m_Value = strdup(value);
+}
+
+HttpHeader::~HttpHeader()
+{
+    free((void*)m_Key);
+    free((void*)m_Value);
+    m_Key = 0;
+    m_Value = 0;
+}
+
+HttpHeader* HandshakeResponse::GetHeader(const char* header_key)
+{
+    for(uint32_t i = 0; i < m_Headers.Size(); ++i)
+    {
+        if (dmStriCmp(m_Headers[i]->m_Key, header_key) == 0)
+        {
+            return m_Headers[i];
+        }
+    }
+
+    return 0;
+}
+
+HandshakeResponse::~HandshakeResponse()
+{
+    for(uint32_t i = 0; i < m_Headers.Size(); ++i)
+    {
+        delete m_Headers[i];
+    }
 }
 
 

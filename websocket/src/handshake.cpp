@@ -1,5 +1,6 @@
 #include "websocket.h"
 #include <dmsdk/dlib/socket.h>
+#include <dmsdk/dlib/http_client.h>
 #include <ctype.h> // tolower
 
 namespace dmWebsocket
@@ -170,17 +171,62 @@ Result ReceiveHeaders(WebsocketConnection* conn)
 }
 #endif
 
-static int dmStriCmp(const char* s1, const char* s2)
+static void HandleVersion(void* user_data, int major, int minor, int status, const char* status_str)
 {
-    for (;;)
+    HandshakeResponse* response = (HandshakeResponse*)user_data;
+    response->m_HttpMajor = major;
+    response->m_HttpMinor = minor;
+    response->m_ResponseStatusCode = status;
+}
+
+
+static void HandleHeader(void* user_data, const char* key, const char* value)
+{
+    HandshakeResponse* response = (HandshakeResponse*)user_data;
+    if (response->m_Headers.Remaining() == 0)
     {
-        if (!*s1 || !*s2 || tolower((unsigned char) *s1) != tolower((unsigned char) *s2))
-        {
-            return (unsigned char) *s1 - (unsigned char) *s2;
-        }
-        s1++;
-        s2++;
+        response->m_Headers.OffsetCapacity(4);
     }
+    HttpHeader* new_header = new HttpHeader(key, value);
+
+    response->m_Headers.Push(new_header);
+}
+
+
+static void HandleContent(void* user_data, int offset)
+{
+    HandshakeResponse* response = (HandshakeResponse*)user_data;
+    response->m_BodyOffset = offset;
+}
+
+
+bool ValidateSecretKey(WebsocketConnection* conn, const char* server_key)
+{
+    uint8_t client_key[32 + 40];
+    uint32_t client_key_len = sizeof(client_key);
+    dmCrypt::Base64Encode(conn->m_Key, sizeof(conn->m_Key), client_key, &client_key_len);
+    client_key[client_key_len] = 0;
+
+    DebugLog(2, "Secret key (base64): %s", client_key);
+
+    memcpy(client_key + client_key_len, RFC_MAGIC, strlen(RFC_MAGIC));
+    client_key_len += strlen(RFC_MAGIC);
+    client_key[client_key_len] = 0;
+
+    DebugLog(2, "Secret key + RFC_MAGIC: %s", client_key);
+
+    uint8_t client_key_sha1[20];
+    dmCrypt::HashSha1(client_key, client_key_len, client_key_sha1);
+
+    DebugPrint(2, "Hashed key (sha1):", client_key_sha1, sizeof(client_key_sha1));
+
+    client_key_len = sizeof(client_key);
+    dmCrypt::Base64Encode(client_key_sha1, sizeof(client_key_sha1), client_key, &client_key_len);
+    client_key[client_key_len] = 0;
+    DebugLog(2, "Client key (base64): %s", client_key);
+    DebugLog(2, "Server key (base64): %s", server_key);
+
+    return strcmp(server_key, (const char*)client_key) == 0;
 }
 
 
@@ -194,81 +240,31 @@ Result VerifyHeaders(WebsocketConnection* conn)
 {
     char* r = conn->m_Buffer;
 
-    // According to protocol, the response should start with "HTTP/1.1 <statuscode> <message>"
-    const char* http_version_and_status_protocol = "HTTP/1.1 101";
-    if (strstr(r, http_version_and_status_protocol) != r) {
-        return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Missing: '%s' in header", http_version_and_status_protocol);
-    }
+    // Find start of payload now because dmHttpClient::ParseHeader is destructive
+    const char* start_of_payload = strstr(conn->m_Buffer, "\r\n\r\n");
+    start_of_payload += 4;
 
-    const char* endtag = strstr(conn->m_Buffer, "\r\n\r\n");
-
-    r = strstr(r, "\r\n") + 2;
-
-    bool connection = false;
-    bool upgrade = false;
-    bool valid_key = false;
-
-    // parse the headers in place
-    while (r < endtag)
+    HandshakeResponse* response = new HandshakeResponse();
+    conn->m_HandshakeResponse = response;
+    dmHttpClient::ParseResult parse_result = dmHttpClient::ParseHeader(r, response, true, &HandleVersion, &HandleHeader, &HandleContent);
+    if (parse_result != dmHttpClient::ParseResult::PARSE_RESULT_OK)
     {
-        // Tokenize the each header line: "Key: Value\r\n"
-        const char* key = r;
-        r = strchr(r, ':');
-        *r = 0;
-        ++r;
-        const char* value = r;
-        while(*value == ' ')
-            ++value;
-        r = strstr(r, "\r\n");
-        *r = 0;
-        r += 2;
-
-        // Page 18 in https://tools.ietf.org/html/rfc6455#section-11.3.3
-        if (dmStriCmp(key, "Connection") == 0 && dmStriCmp(value, "Upgrade") == 0)
-            connection = true;
-        else if (dmStriCmp(key, "Upgrade") == 0 && dmStriCmp(value, "websocket") == 0)
-            upgrade = true;
-        else if (dmStriCmp(key, "Sec-WebSocket-Accept") == 0)
-        {
-            uint8_t client_key[32 + 40];
-            uint32_t client_key_len = sizeof(client_key);
-            dmCrypt::Base64Encode(conn->m_Key, sizeof(conn->m_Key), client_key, &client_key_len);
-            client_key[client_key_len] = 0;
-
-            DebugLog(2, "Secret key (base64): %s", client_key);
-
-            memcpy(client_key + client_key_len, RFC_MAGIC, strlen(RFC_MAGIC));
-            client_key_len += strlen(RFC_MAGIC);
-            client_key[client_key_len] = 0;
-
-            DebugLog(2, "Secret key + RFC_MAGIC: %s", client_key);
-
-            uint8_t client_key_sha1[20];
-            dmCrypt::HashSha1(client_key, client_key_len, client_key_sha1);
-
-            DebugPrint(2, "Hashed key (sha1):", client_key_sha1, sizeof(client_key_sha1));
-
-            client_key_len = sizeof(client_key);
-            dmCrypt::Base64Encode(client_key_sha1, sizeof(client_key_sha1), client_key, &client_key_len);
-            client_key[client_key_len] = 0;
-
-            DebugLog(2, "Client key (base64): %s", client_key);
-
-            DebugLog(2, "Server key (base64): %s", value);
-
-            if (strcmp(value, (const char*)client_key) == 0)
-                valid_key = true;
-        }
+        return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Failed to parse handshake response. 'dmHttpClient::ParseResult=%i'", parse_result);
     }
 
-    // The response might contain both the headers, but also (if successful) the first batch of data
-    endtag += 4;
-    uint32_t size = conn->m_BufferSize - (endtag - conn->m_Buffer);
-    conn->m_BufferSize = size;
-    memmove(conn->m_Buffer, endtag, size);
-    conn->m_Buffer[size] = 0;
-    conn->m_HasHandshakeData = conn->m_BufferSize != 0 ? 1 : 0;
+    if (response->m_ResponseStatusCode != 101) {
+        return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Wrong response status: %i", response->m_ResponseStatusCode);
+    }
 
+    HttpHeader *connection_header, *upgrade_header, *websocket_secret_header;
+    connection_header = response->GetHeader("Connection");
+    upgrade_header = response->GetHeader("Upgrade");
+    websocket_secret_header = response->GetHeader("Sec-WebSocket-Accept");
+    bool connection = connection_header && dmStriCmp(connection_header->m_Value, "Upgrade") == 0;
+    bool upgrade  = upgrade_header && dmStriCmp(upgrade_header->m_Value, "websocket") == 0;
+    bool valid_key = websocket_secret_header && ValidateSecretKey(conn, websocket_secret_header->m_Value);
+
+    // Send error to lua?
     if (!connection)
         dmLogError("Failed to find the Connection keyword in the response headers");
     if (!upgrade)
@@ -277,11 +273,21 @@ Result VerifyHeaders(WebsocketConnection* conn)
         dmLogError("Failed to find valid key in the response headers");
 
     bool ok = connection && upgrade && valid_key;
-    if (!ok) {
-        dmLogError("Response:\n\"%s\"\n", conn->m_Buffer);
+    if(!ok)
+    {
+        return RESULT_HANDSHAKE_FAILED;
     }
 
-    return ok ? RESULT_OK : RESULT_HANDSHAKE_FAILED;
+    delete conn->m_HandshakeResponse;
+    conn->m_HandshakeResponse = 0;
+
+    // The response might contain both the headers, but also (if successful) the first batch of data
+    uint32_t size = conn->m_BufferSize - (start_of_payload - conn->m_Buffer);
+    conn->m_BufferSize = size;
+    memmove(conn->m_Buffer, start_of_payload, size);
+    conn->m_Buffer[size] = 0;
+    conn->m_HasHandshakeData = conn->m_BufferSize != 0 ? 1 : 0;
+    return RESULT_OK;
 }
 #endif
 
