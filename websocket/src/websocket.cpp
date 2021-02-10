@@ -13,6 +13,7 @@
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h> // for EM_ASM
+#include "emscripten/websocket.h"
 #endif
 
 #if defined(WIN32)
@@ -53,6 +54,7 @@ const char* ResultToString(Result err)
 const char* StateToString(State err)
 {
     switch(err) {
+        STRING_CASE(STATE_CONNECT);
         STRING_CASE(STATE_CONNECTING);
         STRING_CASE(STATE_HANDSHAKE_WRITE);
         STRING_CASE(STATE_HANDSHAKE_READ);
@@ -166,8 +168,6 @@ Result SetStatus(WebsocketConnection* conn, Result status, const char* format, .
 // ***************************************************************************************************
 // LUA functions
 
-
-
 static WebsocketConnection* CreateConnection(const char* url)
 {
     WebsocketConnection* conn = new WebsocketConnection;
@@ -183,7 +183,7 @@ static WebsocketConnection* CreateConnection(const char* url)
         strcpy(conn->m_Url.m_Scheme, "wss");
 
     conn->m_SSL = strcmp(conn->m_Url.m_Scheme, "wss") == 0 ? 1 : 0;
-    conn->m_State = STATE_CONNECTING;
+    conn->m_State = STATE_CONNECT;
 
     conn->m_Callback = 0;
     conn->m_Connection = 0;
@@ -195,6 +195,9 @@ static WebsocketConnection* CreateConnection(const char* url)
 
 #if defined(HAVE_WSLAY)
     conn->m_Ctx = 0;
+#endif
+#if defined(__EMSCRIPTEN__)
+    conn->m_WS = 0;
 #endif
 
     return conn;
@@ -214,10 +217,10 @@ static void DestroyConnection(WebsocketConnection* conn)
         dmScript::DestroyCallback(conn->m_Callback);
 
 #if defined(__EMSCRIPTEN__)
-    if (conn->m_Socket != dmSocket::INVALID_SOCKET_HANDLE) {
-        // We would normally do a shutdown() first, but Emscripten returns ENOSYS
-        //dmSocket::Shutdown(conn->m_Socket, dmSocket::SHUTDOWNTYPE_READWRITE);
-        dmSocket::Delete(conn->m_Socket);
+    if (conn->m_WS)
+    {
+        emscripten_websocket_close(conn->m_WS, 1000, "DestroyConnection");
+        conn->m_WS = 0;
     }
 #else
     if (conn->m_Connection)
@@ -239,7 +242,9 @@ static void CloseConnection(WebsocketConnection* conn)
     // we want it to send this message in the polling
     if (conn->m_State == STATE_CONNECTED) {
 #if defined(HAVE_WSLAY)
-        WSL_Close(conn->m_Ctx);
+    WSL_Close(conn->m_Ctx);
+#else
+    emscripten_websocket_close(conn->m_WS, 1000, "CloseConnection");
 #endif
     }
 
@@ -346,9 +351,17 @@ static int LuaSend(lua_State* L)
 
     wslay_event_queue_msg(conn->m_Ctx, &msg); // it makes a copy of the data
 #else
-
-    dmSocket::Result sr = Send(conn, string, string_length, 0);
-    if (dmSocket::RESULT_OK != sr)
+    EMSCRIPTEN_RESULT result;
+    int write_mode = dmScript::CheckTableNumber(L, 3, "type", DATA_TYPE_BINARY);
+    if (write_mode == DATA_TYPE_BINARY)
+    {
+        result = emscripten_websocket_send_binary(conn->m_WS, (void*)string, string_length);
+    }
+    else
+    {
+        result = emscripten_websocket_send_utf8_text(conn->m_WS, string);
+    }
+    if (result)
     {
         CLOSE_CONN("Failed to send on websocket");
     }
@@ -449,6 +462,63 @@ HandshakeResponse::~HandshakeResponse()
 }
 
 
+
+// ***************************************************************************************************
+// Emscripten Websocket library callbacks
+
+#if defined(__EMSCRIPTEN__)
+
+static WebsocketConnection* FindConnectionForEmscriptenWebSocket(EMSCRIPTEN_WEBSOCKET_T ws)
+{
+    for (int i = 0; i < g_Websocket.m_Connections.Size(); ++i )
+    {
+        if (g_Websocket.m_Connections[i]->m_WS == ws)
+            return g_Websocket.m_Connections[i];
+    }
+    return 0;
+}
+
+EM_BOOL WebSocketOnOpen(int eventType, const EmscriptenWebSocketOpenEvent *websocketEvent, void *userData) {
+    DebugLog(1, "WebSocketOnOpen");
+    WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
+    if (conn)
+    {
+        SetState(conn, STATE_CONNECTED);
+        HandleCallback(conn, EVENT_CONNECTED, 0, 0);
+    }
+    return EM_TRUE;
+}
+EM_BOOL WebSocketOnError(int eventType, const EmscriptenWebSocketErrorEvent *websocketEvent, void *userData) {
+    DebugLog(1, "WebSocketOnError");
+    WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
+    if (conn)
+    {
+        conn->m_Status = RESULT_ERROR;
+        SetState(conn, STATE_DISCONNECTED);
+    }
+    return EM_TRUE;
+}
+EM_BOOL WebSocketOnClose(int eventType, const EmscriptenWebSocketCloseEvent *websocketEvent, void *userData) {
+    DebugLog(1, "WebSocketOnClose");
+    WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
+    if (conn)
+    {
+        PushMessage(conn, MESSAGE_TYPE_CLOSE, 0, 0);
+    }
+    return EM_TRUE;
+}
+EM_BOOL WebSocketOnMessage(int eventType, const EmscriptenWebSocketMessageEvent *websocketEvent, void *userData) {
+    DebugLog(1, "WebSocketOnMessage");
+    WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
+    if (conn)
+    {
+        PushMessage(conn, MESSAGE_TYPE_NORMAL, websocketEvent->numBytes, websocketEvent->data);
+    }
+    return EM_TRUE;
+}
+#endif
+
+
 // ***************************************************************************************************
 // Life cycle functions
 
@@ -524,14 +594,6 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
     }
 #endif
 
-#if defined(__EMSCRIPTEN__)
-    // avoid mixed content warning if trying to access wss resource from http page
-    // If not using this, we get EHOSTUNREACH
-    EM_ASM({
-        Module["websocket"].url = window["location"]["protocol"].replace("http", "ws") + "//";
-    });
-#endif
-
     g_Websocket.m_Initialized = 1;
     if (!g_Websocket.m_Pool)
     {
@@ -561,7 +623,6 @@ static dmExtension::Result Initialize(dmExtension::Params* params)
 
 static dmExtension::Result AppFinalize(dmExtension::AppParams* params)
 {
-
     dmConnectionPool::Shutdown(g_Websocket.m_Pool, dmSocket::SHUTDOWNTYPE_READWRITE);
     return dmExtension::RESULT_OK;
 }
@@ -647,23 +708,6 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                 CLOSE_CONN("Websocket closing for %s (%s)", conn->m_Url.m_Hostname, WSL_ResultToString(r));
                 continue;
             }
-#else
-            int recv_bytes = 0;
-            dmSocket::Result sr = Receive(conn, conn->m_Buffer, conn->m_BufferCapacity-1, &recv_bytes);
-            if( sr == dmSocket::RESULT_WOULDBLOCK )
-            {
-                continue;
-            }
-
-            if (dmSocket::RESULT_OK == sr)
-            {
-                PushMessage(conn, MESSAGE_TYPE_NORMAL, recv_bytes, (const uint8_t*)conn->m_Buffer);
-            }
-            else
-            {
-                CLOSE_CONN("Websocket failed to receive data %s", dmSocket::ResultToString(sr));
-                continue;
-            }
 #endif
 
             uint32_t offset = 0;
@@ -735,9 +779,9 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             dmSocket::SetReceiveTimeout(conn->m_Socket, 1000);
             if (conn->m_SSLSocket)
                 dmSSLSocket::SetReceiveTimeout(conn->m_SSLSocket, 1000);
-#endif
-            dmSocket::SetBlocking(conn->m_Socket, false);
 
+            dmSocket::SetBlocking(conn->m_Socket, false);
+#endif
             SetState(conn, STATE_CONNECTED);
             HandleCallback(conn, EVENT_CONNECTED, 0, 0);
         }
@@ -762,7 +806,7 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 
             SetState(conn, STATE_HANDSHAKE_READ);
         }
-        else if (STATE_CONNECTING == conn->m_State)
+        else if (STATE_CONNECT == conn->m_State)
         {
             if (CheckConnectTimeout(conn))
             {
@@ -771,40 +815,33 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             }
 
 #if defined(__EMSCRIPTEN__)
-            conn->m_SSLSocket = dmSSLSocket::INVALID_SOCKET_HANDLE;
-
-            EM_ASM({
-                // https://emscripten.org/docs/porting/networking.html#emulated-posix-tcp-sockets-over-websockets
-                Module["websocket"]["subprotocol"] = $0 ? UTF8ToString($0) : null;
-            }, conn->m_Protocol);
-
             char uri_buffer[dmURI::MAX_URI_LEN];
             const char* uri;
             if (conn->m_Url.m_Path[0] != '\0') {
-                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s%s", conn->m_Url.m_Hostname, conn->m_Url.m_Path);
-                uri = uri_buffer;
+                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Path);
             } else {
-                uri = conn->m_Url.m_Hostname;
+                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname);
             }
+            uri = uri_buffer;
 
-            dmSocket::Address address;
-            dmSocket::Result sr = dmSocket::GetHostByName(uri, &address, true, false);
-            if (dmSocket::RESULT_OK != sr) {
-                CLOSE_CONN("Failed to get address from host name '%s': %s", uri, dmSocket::ResultToString(sr));
+            EmscriptenWebSocketCreateAttributes ws_attrs = {
+                uri,
+                conn->m_Protocol,
+                EM_TRUE
+            };
+            EMSCRIPTEN_WEBSOCKET_T ws = emscripten_websocket_new(&ws_attrs);
+            if (ws < 0)
+            {
+                CLOSE_CONN("Failed to connect to '%s:%d': %d", conn->m_Url.m_Hostname, (int)conn->m_Url.m_Port, ws);
                 continue;
             }
+            conn->m_WS = ws;
 
-            sr = dmSocket::New(address.m_family, dmSocket::TYPE_STREAM, dmSocket::PROTOCOL_TCP, &conn->m_Socket);
-            if (dmSocket::RESULT_OK != sr) {
-                CLOSE_CONN("Failed to create socket for '%s': %s", conn->m_Url.m_Hostname, dmSocket::ResultToString(sr));
-                continue;
-            }
-
-            sr = dmSocket::Connect(conn->m_Socket, address, conn->m_Url.m_Port);
-            if (dmSocket::RESULT_OK != sr) {
-                CLOSE_CONN("Failed to connect to '%s:%d': %s", conn->m_Url.m_Hostname, (int)conn->m_Url.m_Port, dmSocket::ResultToString(sr));
-                continue;
-            }
+            emscripten_websocket_set_onopen_callback(ws, NULL, WebSocketOnOpen);
+            emscripten_websocket_set_onerror_callback(ws, NULL, WebSocketOnError);
+            emscripten_websocket_set_onclose_callback(ws, NULL, WebSocketOnClose);
+            emscripten_websocket_set_onmessage_callback(ws, NULL, WebSocketOnMessage);
+            SetState(conn, STATE_CONNECTING);
 #else
             dmSocket::Result sr;
             int timeout = g_Websocket.m_Timeout;
@@ -816,9 +853,16 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             }
             conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
             conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
-#endif
-
             SetState(conn, STATE_HANDSHAKE_WRITE);
+#endif
+        }
+        else if (STATE_CONNECTING == conn->m_State)
+        {
+            if (CheckConnectTimeout(conn))
+            {
+                CLOSE_CONN("Connect sequence timed out");
+                continue;
+            }
         }
     }
 

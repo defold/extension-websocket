@@ -13,6 +13,10 @@
 
 #if defined(HAVE_WSLAY)
     #include <wslay/wslay.h>
+    #endif
+
+#if defined(__EMSCRIPTEN__)
+#include "emscripten/websocket.h"
 #endif
 
 #include <dmsdk/dlib/connection_pool.h>
@@ -35,6 +39,7 @@ namespace dmWebsocket
 
     enum State
     {
+        STATE_CONNECT,
         STATE_CONNECTING,
         STATE_HANDSHAKE_WRITE,
         STATE_HANDSHAKE_READ,
@@ -104,6 +109,9 @@ namespace dmWebsocket
         dmScript::LuaCallbackInfo*      m_Callback;
 #if defined(HAVE_WSLAY)
         wslay_event_context_ptr         m_Ctx;
+#endif
+#if defined(__EMSCRIPTEN__)
+        EMSCRIPTEN_WEBSOCKET_T          m_WS;
 #endif
         dmURI::Parts                    m_Url;
         dmConnectionPool::HConnection   m_Connection;
