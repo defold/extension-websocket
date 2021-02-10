@@ -169,7 +169,5 @@ namespace dmWebsocket
 #else
     void DebugLog(int level, const char* fmt, ...);
 #endif
-
-    int dmStriCmp(const char* s1, const char* s2);
     void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_bytes);
 }

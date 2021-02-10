@@ -64,19 +64,6 @@ const char* StateToString(State err)
 
 #undef STRING_CASE
 
-int dmStriCmp(const char* s1, const char* s2)
-{
-    for (;;)
-    {
-        if (!*s1 || !*s2 || tolower((unsigned char) *s1) != tolower((unsigned char) *s2))
-        {
-            return (unsigned char) *s1 - (unsigned char) *s2;
-        }
-        s1++;
-        s2++;
-    }
-}
-
 void DebugLog(int level, const char* fmt, ...)
 {
     if (level > g_DebugWebSocket)
@@ -444,7 +431,7 @@ HttpHeader* HandshakeResponse::GetHeader(const char* header_key)
 {
     for(uint32_t i = 0; i < m_Headers.Size(); ++i)
     {
-        if (dmStriCmp(m_Headers[i]->m_Key, header_key) == 0)
+        if (dmStrCaseCmp(m_Headers[i]->m_Key, header_key) == 0)
         {
             return m_Headers[i];
         }
