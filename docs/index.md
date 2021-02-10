@@ -21,7 +21,14 @@ local function websocket_callback(self, conn, data)
         update_gui(self)
         log("Connected: " .. tostring(conn))
     elseif data.event == websocket.EVENT_ERROR then
-        log("Error: '" .. data.error .. "'")
+        log("Error: '" .. tostring(data.message) .. "'")
+        if data.handshake_response then
+            log("Handshake response status: '" .. tostring(data.handshake_response.status) .. "'")
+            for key, value in pairs(data.handshake_response.headers) do
+                log("Handshake response header: '" .. key .. ": " .. value .. "'")
+            end
+            log("Handshake response body: '" .. tostring(data.handshake_response.response) .. "'")
+        end
     elseif data.event == websocket.EVENT_MESSAGE then
         log("Receiving: '" .. tostring(data.message) .. "'")
     end
