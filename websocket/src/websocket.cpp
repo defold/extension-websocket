@@ -221,7 +221,7 @@ static void DestroyConnection(WebsocketConnection* conn)
     }
 #else
     if (conn->m_Connection)
-        dmConnectionPool::Return(g_Websocket.m_Pool, conn->m_Connection);
+        dmConnectionPool::Close(g_Websocket.m_Pool, conn->m_Connection);
 #endif
 
     if (conn->m_HandshakeResponse)
