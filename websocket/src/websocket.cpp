@@ -479,7 +479,7 @@ static WebsocketConnection* FindConnectionForEmscriptenWebSocket(EMSCRIPTEN_WEBS
 }
 
 EM_BOOL WebSocketOnOpen(int eventType, const EmscriptenWebSocketOpenEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocketOnOpen");
+    DebugLog(1, "WebSocket OnOpen");
     WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
     if (conn)
     {
@@ -489,7 +489,7 @@ EM_BOOL WebSocketOnOpen(int eventType, const EmscriptenWebSocketOpenEvent *webso
     return EM_TRUE;
 }
 EM_BOOL WebSocketOnError(int eventType, const EmscriptenWebSocketErrorEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocketOnError");
+    DebugLog(1, "WebSocket OnError");
     WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
     if (conn)
     {
@@ -499,7 +499,7 @@ EM_BOOL WebSocketOnError(int eventType, const EmscriptenWebSocketErrorEvent *web
     return EM_TRUE;
 }
 EM_BOOL WebSocketOnClose(int eventType, const EmscriptenWebSocketCloseEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocketOnClose");
+    DebugLog(1, "WebSocket OnClose");
     WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
     if (conn)
     {
@@ -508,11 +508,16 @@ EM_BOOL WebSocketOnClose(int eventType, const EmscriptenWebSocketCloseEvent *web
     return EM_TRUE;
 }
 EM_BOOL WebSocketOnMessage(int eventType, const EmscriptenWebSocketMessageEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocketOnMessage");
+    DebugLog(1, "WebSocket OnMessage");
     WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
     if (conn)
     {
-        PushMessage(conn, MESSAGE_TYPE_NORMAL, websocketEvent->numBytes, websocketEvent->data);
+        int length = websocketEvent->numBytes;
+        if (websocketEvent->isText)
+        {
+            length--;
+        }
+        PushMessage(conn, MESSAGE_TYPE_NORMAL, length, websocketEvent->data);
     }
     return EM_TRUE;
 }
@@ -648,17 +653,13 @@ Result PushMessage(WebsocketConnection* conn, MessageType type, int length, cons
     msg.m_Length = length;
     conn->m_Messages.Push(msg);
 
-    // No need to copy itself (html5)
-    if (buffer != (const uint8_t*)conn->m_Buffer)
+    if ((conn->m_BufferSize + length) >= conn->m_BufferCapacity)
     {
-        if ((conn->m_BufferSize + length) >= conn->m_BufferCapacity)
-        {
-            conn->m_BufferCapacity = conn->m_BufferSize + length + 1;
-            conn->m_Buffer = (char*)realloc(conn->m_Buffer, conn->m_BufferCapacity);
-        }
-        // append to the end of the buffer
-        memcpy(conn->m_Buffer + conn->m_BufferSize, buffer, length);
+        conn->m_BufferCapacity = conn->m_BufferSize + length + 1;
+        conn->m_Buffer = (char*)realloc(conn->m_Buffer, conn->m_BufferCapacity);
     }
+    // append to the end of the buffer
+    memcpy(conn->m_Buffer + conn->m_BufferSize, buffer, length);
 
     conn->m_BufferSize += length;
     conn->m_Buffer[conn->m_BufferCapacity-1] = 0;
