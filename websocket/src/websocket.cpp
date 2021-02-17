@@ -138,7 +138,7 @@ void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_byt
     CloseConnection(conn);
 
 
-static void SetState(WebsocketConnection* conn, State state)
+void SetState(WebsocketConnection* conn, State state)
 {
     State prev_state = conn->m_State;
     if (prev_state != state)
@@ -251,14 +251,17 @@ static void CloseConnection(WebsocketConnection* conn)
     SetState(conn, STATE_DISCONNECTED);
 }
 
-static int FindConnection(WebsocketConnection* conn)
+bool IsConnectionValid(WebsocketConnection* conn)
 {
-    for (int i = 0; i < g_Websocket.m_Connections.Size(); ++i )
+    if (conn)
     {
-        if (g_Websocket.m_Connections[i] == conn)
-            return i;
+        for (int i = 0; i < g_Websocket.m_Connections.Size(); ++i )
+        {
+            if (g_Websocket.m_Connections[i] == conn)
+                return true;
+        }
     }
-    return -1;
+    return false;
 }
 
 /*#
@@ -311,8 +314,7 @@ static int LuaDisconnect(lua_State* L)
 
     WebsocketConnection* conn = (WebsocketConnection*)lua_touserdata(L, 1);
 
-    int i = FindConnection(conn);
-    if (i != -1)
+    if (IsConnectionValid(conn))
     {
         CloseConnection(conn);
     }
@@ -331,8 +333,7 @@ static int LuaSend(lua_State* L)
 
     WebsocketConnection* conn = (WebsocketConnection*)lua_touserdata(L, 1);
 
-    int i = FindConnection(conn);
-    if (i == -1)
+    if (!IsConnectionValid(conn))
         return DM_LUA_ERROR("Invalid connection");
 
     if (conn->m_State != STATE_CONNECTED)
@@ -370,7 +371,7 @@ static int LuaSend(lua_State* L)
     return 0;
 }
 
-static void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int msg_length)
+void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int msg_length)
 {
     if (!dmScript::IsCallbackValid(conn->m_Callback))
         return;
@@ -460,68 +461,6 @@ HandshakeResponse::~HandshakeResponse()
         delete m_Headers[i];
     }
 }
-
-
-
-// ***************************************************************************************************
-// Emscripten Websocket library callbacks
-
-#if defined(__EMSCRIPTEN__)
-
-static WebsocketConnection* FindConnectionForEmscriptenWebSocket(EMSCRIPTEN_WEBSOCKET_T ws)
-{
-    for (int i = 0; i < g_Websocket.m_Connections.Size(); ++i )
-    {
-        if (g_Websocket.m_Connections[i]->m_WS == ws)
-            return g_Websocket.m_Connections[i];
-    }
-    return 0;
-}
-
-EM_BOOL WebSocketOnOpen(int eventType, const EmscriptenWebSocketOpenEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocket OnOpen");
-    WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
-    if (conn)
-    {
-        SetState(conn, STATE_CONNECTED);
-        HandleCallback(conn, EVENT_CONNECTED, 0, 0);
-    }
-    return EM_TRUE;
-}
-EM_BOOL WebSocketOnError(int eventType, const EmscriptenWebSocketErrorEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocket OnError");
-    WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
-    if (conn)
-    {
-        conn->m_Status = RESULT_ERROR;
-        SetState(conn, STATE_DISCONNECTED);
-    }
-    return EM_TRUE;
-}
-EM_BOOL WebSocketOnClose(int eventType, const EmscriptenWebSocketCloseEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocket OnClose");
-    WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
-    if (conn)
-    {
-        PushMessage(conn, MESSAGE_TYPE_CLOSE, 0, 0);
-    }
-    return EM_TRUE;
-}
-EM_BOOL WebSocketOnMessage(int eventType, const EmscriptenWebSocketMessageEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocket OnMessage");
-    WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
-    if (conn)
-    {
-        int length = websocketEvent->numBytes;
-        if (websocketEvent->isText)
-        {
-            length--;
-        }
-        PushMessage(conn, MESSAGE_TYPE_NORMAL, length, websocketEvent->data);
-    }
-    return EM_TRUE;
-}
-#endif
 
 
 // ***************************************************************************************************
@@ -838,10 +777,10 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             }
             conn->m_WS = ws;
 
-            emscripten_websocket_set_onopen_callback(ws, NULL, WebSocketOnOpen);
-            emscripten_websocket_set_onerror_callback(ws, NULL, WebSocketOnError);
-            emscripten_websocket_set_onclose_callback(ws, NULL, WebSocketOnClose);
-            emscripten_websocket_set_onmessage_callback(ws, NULL, WebSocketOnMessage);
+            emscripten_websocket_set_onopen_callback(ws, conn, Emscripten_WebSocketOnOpen);
+            emscripten_websocket_set_onerror_callback(ws, conn, Emscripten_WebSocketOnError);
+            emscripten_websocket_set_onclose_callback(ws, conn, Emscripten_WebSocketOnClose);
+            emscripten_websocket_set_onmessage_callback(ws, conn, Emscripten_WebSocketOnMessage);
             SetState(conn, STATE_CONNECTING);
 #else
             dmSocket::Result sr;

@@ -140,6 +140,11 @@ namespace dmWebsocket
     Result SetStatus(WebsocketConnection* conn, Result status, const char* fmt, ...);
 #endif
 
+    // Set socket state
+    void SetState(WebsocketConnection* conn, State state);
+
+    bool IsConnectionValid(WebsocketConnection* conn);
+
     // Communication
     dmSocket::Result Send(WebsocketConnection* conn, const char* buffer, int length, int* out_sent_bytes);
     dmSocket::Result Receive(WebsocketConnection* conn, void* buffer, int length, int* received_bytes);
@@ -149,6 +154,9 @@ namespace dmWebsocket
     Result SendClientHandshake(WebsocketConnection* conn);
     Result ReceiveHeaders(WebsocketConnection* conn);
     Result VerifyHeaders(WebsocketConnection* conn);
+
+    // Callback to Lua
+    void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int msg_length);
 
     // Messages
     Result PushMessage(WebsocketConnection* conn, MessageType type, int length, const uint8_t* msg);
@@ -164,6 +172,12 @@ namespace dmWebsocket
     void    WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event_on_msg_recv_arg *arg, void *user_data);
     int     WSL_GenmaskCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, void *user_data);
     const char* WSL_ResultToString(int err);
+#endif
+#if defined(__EMSCRIPTEN__)
+    EM_BOOL Emscripten_WebSocketOnOpen(int eventType, const EmscriptenWebSocketOpenEvent *websocketEvent, void *userData);
+    EM_BOOL Emscripten_WebSocketOnError(int eventType, const EmscriptenWebSocketErrorEvent *websocketEvent, void *userData);
+    EM_BOOL Emscripten_WebSocketOnClose(int eventType, const EmscriptenWebSocketCloseEvent *websocketEvent, void *userData);
+    EM_BOOL Emscripten_WebSocketOnMessage(int eventType, const EmscriptenWebSocketMessageEvent *websocketEvent, void *userData);
 #endif
 
     // Random numbers (PCG)
