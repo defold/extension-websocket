@@ -21,6 +21,8 @@ EM_BOOL Emscripten_WebSocketOnError(int eventType, const EmscriptenWebSocketErro
 EM_BOOL Emscripten_WebSocketOnClose(int eventType, const EmscriptenWebSocketCloseEvent *websocketEvent, void *userData) {
     DebugLog(1, "WebSocket OnClose");
     WebsocketConnection* conn = (WebsocketConnection*)userData;
+    // if the client disconnected through a call to websocket.disconnect() we
+    // receive this callback after the connection has been destroyed
     if (IsConnectionValid(conn))
     {
         PushMessage(conn, MESSAGE_TYPE_CLOSE, 0, 0);
