@@ -13,7 +13,7 @@
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h> // for EM_ASM
-#include "emscripten/websocket.h"
+#include <"emscripten/websocket.h">
 #endif
 
 #if defined(WIN32)
