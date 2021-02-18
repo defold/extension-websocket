@@ -54,7 +54,7 @@ const char* ResultToString(Result err)
 const char* StateToString(State err)
 {
     switch(err) {
-        STRING_CASE(STATE_CONNECT);
+        STRING_CASE(STATE_CREATE);
         STRING_CASE(STATE_CONNECTING);
         STRING_CASE(STATE_HANDSHAKE_WRITE);
         STRING_CASE(STATE_HANDSHAKE_READ);
@@ -183,7 +183,7 @@ static WebsocketConnection* CreateConnection(const char* url)
         strcpy(conn->m_Url.m_Scheme, "wss");
 
     conn->m_SSL = strcmp(conn->m_Url.m_Scheme, "wss") == 0 ? 1 : 0;
-    conn->m_State = STATE_CONNECT;
+    conn->m_State = STATE_CREATE;
 
     conn->m_Callback = 0;
     conn->m_Connection = 0;
@@ -746,7 +746,7 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 
             SetState(conn, STATE_HANDSHAKE_READ);
         }
-        else if (STATE_CONNECT == conn->m_State)
+        else if (STATE_CREATE == conn->m_State)
         {
             if (CheckConnectTimeout(conn))
             {

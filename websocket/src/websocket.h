@@ -39,7 +39,7 @@ namespace dmWebsocket
 
     enum State
     {
-        STATE_CONNECT,
+        STATE_CREATE,
         STATE_CONNECTING,
         STATE_HANDSHAKE_WRITE,
         STATE_HANDSHAKE_READ,
