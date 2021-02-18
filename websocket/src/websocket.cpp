@@ -59,6 +59,7 @@ const char* StateToString(State err)
         STRING_CASE(STATE_HANDSHAKE_WRITE);
         STRING_CASE(STATE_HANDSHAKE_READ);
         STRING_CASE(STATE_CONNECTED);
+        STRING_CASE(STATE_DISCONNECTING);
         STRING_CASE(STATE_DISCONNECTED);
         default: return "Unknown error";
     };
@@ -219,8 +220,7 @@ static void DestroyConnection(WebsocketConnection* conn)
 #if defined(__EMSCRIPTEN__)
     if (conn->m_WS)
     {
-        emscripten_websocket_close(conn->m_WS, 1000, "DestroyConnection");
-        conn->m_WS = 0;
+        emscripten_websocket_delete(conn->m_WS);
     }
 #else
     if (conn->m_Connection)
@@ -242,13 +242,19 @@ static void CloseConnection(WebsocketConnection* conn)
     // we want it to send this message in the polling
     if (conn->m_State == STATE_CONNECTED) {
 #if defined(HAVE_WSLAY)
+        // close the connection and immediately transition to the DISCONNECTED
+        // state
+        SetState(conn, STATE_DISCONNECTED);
         WSL_Close(conn->m_Ctx);
 #else
+        // start disconnecting by closing the WebSocket through the JS API
+        // we transition to the DISCONNECTED state when we receive the
+        // Emscripten callback that the connection has closed
+        SetState(conn, STATE_DISCONNECTING);
         emscripten_websocket_close(conn->m_WS, 1000, "CloseConnection");
 #endif
     }
 
-    SetState(conn, STATE_DISCONNECTED);
 }
 
 bool IsConnectionValid(WebsocketConnection* conn)

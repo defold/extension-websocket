@@ -44,6 +44,7 @@ namespace dmWebsocket
         STATE_HANDSHAKE_WRITE,
         STATE_HANDSHAKE_READ,
         STATE_CONNECTED,
+        STATE_DISCONNECTING,
         STATE_DISCONNECTED,
     };
 
