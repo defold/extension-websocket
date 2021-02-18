@@ -6,7 +6,6 @@ namespace dmWebsocket
 {
 EM_BOOL Emscripten_WebSocketOnOpen(int eventType, const EmscriptenWebSocketOpenEvent *websocketEvent, void *userData) {
     DebugLog(1, "WebSocket OnOpen");
-    // WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
     WebsocketConnection* conn = (WebsocketConnection*)userData;
     if (IsConnectionValid(conn))
     {
@@ -17,7 +16,6 @@ EM_BOOL Emscripten_WebSocketOnOpen(int eventType, const EmscriptenWebSocketOpenE
 }
 EM_BOOL Emscripten_WebSocketOnError(int eventType, const EmscriptenWebSocketErrorEvent *websocketEvent, void *userData) {
     DebugLog(1, "WebSocket OnError");
-    // WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
     WebsocketConnection* conn = (WebsocketConnection*)userData;
     if ( IsConnectionValid(conn))
     {
@@ -28,7 +26,6 @@ EM_BOOL Emscripten_WebSocketOnError(int eventType, const EmscriptenWebSocketErro
 }
 EM_BOOL Emscripten_WebSocketOnClose(int eventType, const EmscriptenWebSocketCloseEvent *websocketEvent, void *userData) {
     DebugLog(1, "WebSocket OnClose");
-    // WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
     WebsocketConnection* conn = (WebsocketConnection*)userData;
     if (IsConnectionValid(conn))
     {
@@ -38,7 +35,6 @@ EM_BOOL Emscripten_WebSocketOnClose(int eventType, const EmscriptenWebSocketClos
 }
 EM_BOOL Emscripten_WebSocketOnMessage(int eventType, const EmscriptenWebSocketMessageEvent *websocketEvent, void *userData) {
     DebugLog(1, "WebSocket OnMessage");
-    // WebsocketConnection* conn = FindConnectionForEmscriptenWebSocket(websocketEvent->socket);
     WebsocketConnection* conn = (WebsocketConnection*)userData;
     if (IsConnectionValid(conn))
     {
