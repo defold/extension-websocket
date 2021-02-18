@@ -144,8 +144,6 @@ namespace dmWebsocket
     // Set socket state
     void SetState(WebsocketConnection* conn, State state);
 
-    bool IsConnectionValid(WebsocketConnection* conn);
-
     // Communication
     dmSocket::Result Send(WebsocketConnection* conn, const char* buffer, int length, int* out_sent_bytes);
     dmSocket::Result Receive(WebsocketConnection* conn, void* buffer, int length, int* received_bytes);

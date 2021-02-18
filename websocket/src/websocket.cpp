@@ -244,20 +244,20 @@ static void CloseConnection(WebsocketConnection* conn)
 #if defined(HAVE_WSLAY)
         // close the connection and immediately transition to the DISCONNECTED
         // state
-        SetState(conn, STATE_DISCONNECTED);
         WSL_Close(conn->m_Ctx);
+        SetState(conn, STATE_DISCONNECTED);
 #else
         // start disconnecting by closing the WebSocket through the JS API
         // we transition to the DISCONNECTED state when we receive the
         // Emscripten callback that the connection has closed
-        SetState(conn, STATE_DISCONNECTING);
         emscripten_websocket_close(conn->m_WS, 1000, "CloseConnection");
+        SetState(conn, STATE_DISCONNECTING);
 #endif
     }
 
 }
 
-bool IsConnectionValid(WebsocketConnection* conn)
+static bool IsConnectionValid(WebsocketConnection* conn)
 {
     if (conn)
     {
