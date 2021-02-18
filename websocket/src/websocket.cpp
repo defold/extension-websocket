@@ -242,9 +242,9 @@ static void CloseConnection(WebsocketConnection* conn)
     // we want it to send this message in the polling
     if (conn->m_State == STATE_CONNECTED) {
 #if defined(HAVE_WSLAY)
-    WSL_Close(conn->m_Ctx);
+        WSL_Close(conn->m_Ctx);
 #else
-    emscripten_websocket_close(conn->m_WS, 1000, "CloseConnection");
+        emscripten_websocket_close(conn->m_WS, 1000, "CloseConnection");
 #endif
     }
 
