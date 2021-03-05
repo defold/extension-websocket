@@ -260,8 +260,8 @@ Result VerifyHeaders(WebsocketConnection* conn)
     connection_header = response->GetHeader("Connection");
     upgrade_header = response->GetHeader("Upgrade");
     websocket_secret_header = response->GetHeader("Sec-WebSocket-Accept");
-    bool connection = connection_header && dmStriCmp(connection_header->m_Value, "Upgrade") == 0;
-    bool upgrade  = upgrade_header && dmStriCmp(upgrade_header->m_Value, "websocket") == 0;
+    bool connection = connection_header && dmStrCaseCmp(connection_header->m_Value, "Upgrade") == 0;
+    bool upgrade  = upgrade_header && dmStrCaseCmp(upgrade_header->m_Value, "websocket") == 0;
     bool valid_key = websocket_secret_header && ValidateSecretKey(conn, websocket_secret_header->m_Value);
 
     // Send error to lua?

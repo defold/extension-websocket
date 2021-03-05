@@ -14,4 +14,3 @@ _dependencies = https://github.com/GameAnalytics/defold-openssl/archive/1.0.0.zi
 
 [library]
 include_dirs = websocket
-
