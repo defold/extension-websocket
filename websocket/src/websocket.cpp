@@ -763,10 +763,22 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 #if defined(__EMSCRIPTEN__)
             char uri_buffer[dmURI::MAX_URI_LEN];
             const char* uri;
-            if (conn->m_Url.m_Path[0] != '\0') {
-                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Path);
-            } else {
+            bool no_path = conn->m_Url.m_Path[0] == '\0';
+            bool no_port = conn->m_Url.m_Port == -1;
+            if (no_path && no_port)
+            {
                 dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname);
+            }
+            else if (no_port)
+            {
+                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Path);
+            }
+            else if (no_path)
+            {
+                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s:%d", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Port);
+            }
+            else {
+                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s:%d%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Port, conn->m_Url.m_Path);
             }
             uri = uri_buffer;
 
