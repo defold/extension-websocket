@@ -24,6 +24,7 @@
 #include <dmsdk/dlib/dns.h>
 #include <dmsdk/dlib/uri.h>
 #include <dmsdk/dlib/array.h>
+#include <dmsdk/dlib/thread.h>
 
 namespace dmCrypt
 {
@@ -118,6 +119,7 @@ namespace dmWebsocket
         dmConnectionPool::HConnection   m_Connection;
         dmSocket::Socket                m_Socket;
         dmSSLSocket::Socket             m_SSLSocket;
+        dmThread::Thread                m_ConnectionThread;
         dmArray<Message>                m_Messages; // lengths of the messages in the data buffer
         uint64_t                        m_ConnectTimeout;
         uint8_t                         m_Key[16];

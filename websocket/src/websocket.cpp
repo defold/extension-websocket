@@ -8,6 +8,7 @@
 #include "script_util.h"
 #include <dmsdk/dlib/connection_pool.h>
 #include <dmsdk/dlib/dns.h>
+#include <dmsdk/dlib/thread.h>
 #include <dmsdk/dlib/sslsocket.h>
 #include <ctype.h> // isprint et al
 
@@ -232,6 +233,12 @@ static void DestroyConnection(WebsocketConnection* conn)
 
 
     free((void*)conn->m_Buffer);
+
+    if (conn->m_ConnectionThread)
+    {
+        dmThread::Join(conn->m_ConnectionThread);
+    }
+
     delete conn;
     DebugLog(2, "DestroyConnection: %p", conn);
 }
@@ -547,11 +554,7 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
     g_Websocket.m_Initialized = 1;
     if (!g_Websocket.m_Pool)
     {
-        if (!g_Websocket.m_Pool)
-        {
-            dmLogInfo("pool is null!");
-            dmConnectionPool::Delete(g_Websocket.m_Pool);
-        }
+        dmConnectionPool::Delete(g_Websocket.m_Pool);
 
         dmLogInfo("%s extension not initialized", MODULE_NAME);
         g_Websocket.m_Initialized = 0;
@@ -620,6 +623,19 @@ static bool CheckConnectTimeout(WebsocketConnection* conn)
 {
     uint64_t t = dmTime::GetTime();
     return t >= conn->m_ConnectTimeout;
+}
+
+static void ConnectionWorker(void* _conn)
+{
+    WebsocketConnection* conn = (WebsocketConnection*)_conn;
+    dmSocket::Result sr;
+    dmConnectionPool::Result pool_result = dmConnectionPool::Dial(g_Websocket.m_Pool, conn->m_Url.m_Hostname, conn->m_Url.m_Port, g_Websocket.m_Channel, conn->m_SSL, g_Websocket.m_Timeout, &conn->m_Connection, &sr);
+    if (dmConnectionPool::RESULT_OK != pool_result)
+    {
+        CLOSE_CONN("Failed to open connection: %s", dmSocket::ResultToString(sr));
+        return;
+    }
+    SetState(conn, STATE_HANDSHAKE_WRITE);
 }
 
 static dmExtension::Result OnUpdate(dmExtension::Params* params)
@@ -739,6 +755,8 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                 continue;
             }
 
+            conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
+            conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
             Result result = SendClientHandshake(conn);
             if (RESULT_WOULDBLOCK == result)
             {
@@ -799,20 +817,10 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             emscripten_websocket_set_onerror_callback(ws, conn, Emscripten_WebSocketOnError);
             emscripten_websocket_set_onclose_callback(ws, conn, Emscripten_WebSocketOnClose);
             emscripten_websocket_set_onmessage_callback(ws, conn, Emscripten_WebSocketOnMessage);
-            SetState(conn, STATE_CONNECTING);
 #else
-            dmSocket::Result sr;
-            int timeout = g_Websocket.m_Timeout;
-            dmConnectionPool::Result pool_result = dmConnectionPool::Dial(g_Websocket.m_Pool, conn->m_Url.m_Hostname, conn->m_Url.m_Port, g_Websocket.m_Channel, conn->m_SSL, timeout, &conn->m_Connection, &sr);
-            if (dmConnectionPool::RESULT_OK != pool_result)
-            {
-                CLOSE_CONN("Failed to open connection: %s", dmSocket::ResultToString(sr));
-                continue;
-            }
-            conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
-            conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
-            SetState(conn, STATE_HANDSHAKE_WRITE);
+            conn->m_ConnectionThread = dmThread::New(ConnectionWorker, 0x80000, conn, "WebSocketConnectionThread");
 #endif
+            SetState(conn, STATE_CONNECTING);
         }
         else if (STATE_CONNECTING == conn->m_State)
         {
