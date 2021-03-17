@@ -529,6 +529,7 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
     g_Websocket.m_Connections.SetCapacity(4);
     g_Websocket.m_Channel = 0;
     g_Websocket.m_Pool = 0;
+    g_Websocket.m_Initialized = 0;
 
     dmConnectionPool::Params pool_params;
     pool_params.m_MaxConnections = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.max_connections", 2);
@@ -541,6 +542,7 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
     if (dmConnectionPool::RESULT_OK != result)
     {
         dmLogError("Failed to create connection pool: %d", result);
+        return dmExtension::RESULT_INIT_ERROR;
     }
 
 // We can do without the channel, it will then fallback to the dmSocket::GetHostname (as opposed to dmDNS::GetHostname)
@@ -549,19 +551,11 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
 
     if (dmDNS::RESULT_OK != dns_result)
     {
-        dmLogError("Failed to create connection pool: %d", dns_result);
+        dmLogError("Failed to create DNS channel: %d", dns_result);
     }
 #endif
 
     g_Websocket.m_Initialized = 1;
-    if (!g_Websocket.m_Pool)
-    {
-        dmConnectionPool::Delete(g_Websocket.m_Pool);
-
-        dmLogInfo("%s extension not initialized", MODULE_NAME);
-        g_Websocket.m_Initialized = 0;
-    }
-
     return dmExtension::RESULT_OK;
 }
 
