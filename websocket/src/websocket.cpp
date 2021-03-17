@@ -825,11 +825,13 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
         }
         else if (STATE_CONNECTING == conn->m_State)
         {
+#if defined(__EMSCRIPTEN__)
             if (CheckConnectTimeout(conn))
             {
                 CLOSE_CONN("Connect sequence timed out");
                 continue;
             }
+#endif
         }
     }
 
