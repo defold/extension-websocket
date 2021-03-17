@@ -818,7 +818,7 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             emscripten_websocket_set_onclose_callback(ws, conn, Emscripten_WebSocketOnClose);
             emscripten_websocket_set_onmessage_callback(ws, conn, Emscripten_WebSocketOnMessage);
 #else
-            conn->m_ConnectionThread = dmThread::New(ConnectionWorker, 0x80000, conn, "WebSocketConnectionThread");
+            conn->m_ConnectionThread = dmThread::New((dmThread::ThreadStart)ConnectionWorker, 0x80000, conn, "WebSocketConnectionThread");
 #endif
             SetState(conn, STATE_CONNECTING);
         }
