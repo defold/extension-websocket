@@ -194,6 +194,7 @@ static WebsocketConnection* CreateConnection(const char* url)
     conn->m_Status = RESULT_OK;
     conn->m_HasHandshakeData = 0;
     conn->m_HandshakeResponse = 0;
+    conn->m_ConnectionThread = 0;
 
 #if defined(HAVE_WSLAY)
     conn->m_Ctx = 0;
@@ -237,6 +238,7 @@ static void DestroyConnection(WebsocketConnection* conn)
     if (conn->m_ConnectionThread)
     {
         dmThread::Join(conn->m_ConnectionThread);
+        conn->m_ConnectionThread = 0;
     }
 
     delete conn;
@@ -755,6 +757,11 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                 continue;
             }
 
+            if (conn->m_ConnectionThread)
+            {
+                dmThread::Join(conn->m_ConnectionThread);
+                conn->m_ConnectionThread = 0;
+            }
             conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
             conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
             Result result = SendClientHandshake(conn);
