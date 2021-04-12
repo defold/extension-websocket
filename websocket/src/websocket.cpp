@@ -251,10 +251,7 @@ static void CloseConnection(WebsocketConnection* conn)
     // we want it to send this message in the polling
     if (conn->m_State == STATE_CONNECTED) {
 #if defined(HAVE_WSLAY)
-        // close the connection and immediately transition to the DISCONNECTED
-        // state
         WSL_Close(conn->m_Ctx);
-        SetState(conn, STATE_DISCONNECTED);
 #else
         // start disconnecting by closing the WebSocket through the JS API
         // we transition to the DISCONNECTED state when we receive the
@@ -264,6 +261,11 @@ static void CloseConnection(WebsocketConnection* conn)
 #endif
     }
 
+#if defined(HAVE_WSLAY)
+    // close the connection and immediately transition to the DISCONNECTED
+    // state
+    SetState(conn, STATE_DISCONNECTED);
+#endif
 }
 
 static bool IsConnectionValid(WebsocketConnection* conn)
