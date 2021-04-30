@@ -7,7 +7,6 @@
 #include "websocket.h"
 #include "script_util.h"
 #include <dmsdk/dlib/connection_pool.h>
-#include <dmsdk/dlib/dns.h>
 #include <dmsdk/dlib/thread.h>
 #include <dmsdk/dlib/sslsocket.h>
 #include <ctype.h> // isprint et al
@@ -32,7 +31,6 @@ struct WebsocketContext
     int                             m_Timeout;
     dmArray<WebsocketConnection*>   m_Connections;
     dmConnectionPool::HPool         m_Pool;
-    dmDNS::HChannel                 m_Channel;
     uint32_t                        m_Initialized:1;
 } g_Websocket;
 
@@ -529,7 +527,6 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
     g_Websocket.m_BufferSize = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.buffer_size", 64 * 1024);
     g_Websocket.m_Timeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.socket_timeout", 500 * 1000);
     g_Websocket.m_Connections.SetCapacity(4);
-    g_Websocket.m_Channel = 0;
     g_Websocket.m_Pool = 0;
     g_Websocket.m_Initialized = 0;
 
@@ -546,16 +543,6 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
         dmLogError("Failed to create connection pool: %d", result);
         return dmExtension::RESULT_INIT_ERROR;
     }
-
-// We can do without the channel, it will then fallback to the dmSocket::GetHostname (as opposed to dmDNS::GetHostname)
-#if defined(HAVE_WSLAY)
-    dmDNS::Result dns_result = dmDNS::NewChannel(&g_Websocket.m_Channel);
-
-    if (dmDNS::RESULT_OK != dns_result)
-    {
-        dmLogError("Failed to create DNS channel: %d", dns_result);
-    }
-#endif
 
     g_Websocket.m_Initialized = 1;
     return dmExtension::RESULT_OK;
@@ -627,7 +614,7 @@ static void ConnectionWorker(void* _conn)
 {
     WebsocketConnection* conn = (WebsocketConnection*)_conn;
     dmSocket::Result sr;
-    dmConnectionPool::Result pool_result = dmConnectionPool::Dial(g_Websocket.m_Pool, conn->m_Url.m_Hostname, conn->m_Url.m_Port, g_Websocket.m_Channel, conn->m_SSL, g_Websocket.m_Timeout, &conn->m_Connection, &sr);
+    dmConnectionPool::Result pool_result = dmConnectionPool::Dial(g_Websocket.m_Pool, conn->m_Url.m_Hostname, conn->m_Url.m_Port, conn->m_SSL, g_Websocket.m_Timeout, &conn->m_Connection, &sr);
     if (dmConnectionPool::RESULT_OK != pool_result)
     {
         CLOSE_CONN("Failed to open connection: %s", dmSocket::ResultToString(sr));
