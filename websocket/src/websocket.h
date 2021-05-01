@@ -21,7 +21,6 @@
 
 #include <dmsdk/dlib/connection_pool.h>
 #include <dmsdk/dlib/socket.h>
-#include <dmsdk/dlib/dns.h>
 #include <dmsdk/dlib/uri.h>
 #include <dmsdk/dlib/array.h>
 #include <dmsdk/dlib/thread.h>
