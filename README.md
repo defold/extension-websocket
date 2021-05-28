@@ -1,4 +1,4 @@
-
+[![Actions Status Alpha](https://github.com/defold/extension-websocket/actions/workflows/bob.yml/badge.svg)](https://github.com/defold/extension-websocket/actions)
 
 # Defold websocket extension
 
