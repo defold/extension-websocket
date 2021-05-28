@@ -1,5 +1,3 @@
-[![Actions Status Alpha](https://github.com/defold/extension-websocket/actions/workflows/bob.yml/badge.svg)](https://github.com/defold/extension-websocket/actions)
-
 # Defold websocket extension
 
 [![Build Status](https://github.com/defold/extension-websocket/workflows/Build%20with%20bob/badge.svg)](https://github.com/defold/extension-websocket/actions)
