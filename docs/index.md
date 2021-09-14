@@ -56,6 +56,19 @@ https://github.com/defold/extension-websocket/archive/master.zip
 We recommend using a link to a zip file of a [specific release](https://github.com/defold/extension-websocket/releases).
 
 
+## Configuration
+The following configuration options can be set in the game.project file:
+
+```
+[websocket]
+debug = 1
+socket_timeout = 10000000
+```
+
+* `debug` - Log level where 0 means no logs and higher values shows more logs (currently 1 or 2).
+* `socket_timeout` - Timeout for the underlying socket connection. In microseconds.
+
+
 ## Source code
 
 The source code is available on [GitHub](https://github.com/defold/extension-websocket)
