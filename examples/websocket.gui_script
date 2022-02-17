@@ -1,4 +1,5 @@
-local URL="://echo.websocket.org"
+local URL = "echo.websocket.org"
+
 local function click_button(node, action)
 	return gui.is_enabled(node) and action.pressed and gui.pick_node(node, action.x, action.y)
 end
@@ -88,7 +89,7 @@ end
 local function connect(self, scheme)
 	local params = {}
 
-	self.url = scheme .. URL
+	self.url = scheme .. "://" .. URL
 	log("Connecting to " .. self.url)
 	self.connection = websocket.connect(self.url, params, websocket_callback)
 end
