@@ -33,12 +33,6 @@ local function log(...)
 	gui.set_text(node, gui.get_text(node) .. "\n" .. text)
 end
 
-local function http_result(self, _, response)
-    print(response.status)
-    --print(response.response)
-    pprint(response.headers)
-end
-
 function init(self)
 	msg.post(".", "acquire_input_focus")
 	msg.post("@render:", "clear_color", { color = vmath.vector4(0.2, 0.4, 0.8, 1.0) })
@@ -49,9 +43,6 @@ function init(self)
 	self.connection_text = gui.get_node("connection_text")
 	self.connection = nil
 	update_gui(self)
-
-	--http.request("https://defold.com", "GET", http_result)
-
 end
 
 function final(self)
