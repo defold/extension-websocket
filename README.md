@@ -15,7 +15,12 @@ https://defold.com/extension-websocket/api/
 
 ## Debugging
 
-In order to make it easier to debug this extension, we provide a `game.project` setting `websocket.debug`.
+In order to make it easier to debug this extension, we provide a `game.project` setting `websocket.debug` (edit `game.project` as text and add):
+
+```
+[websocket]
+debug = level
+```
 
 Set it to:
 
