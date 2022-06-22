@@ -135,7 +135,7 @@ void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_byt
 
 #define CLOSE_CONN(...) \
     SetStatus(conn, RESULT_ERROR, __VA_ARGS__); \
-    CloseConnection(conn);
+    CloseConnection(conn, 0);
 
 
 void SetState(WebsocketConnection* conn, State state)
@@ -244,7 +244,7 @@ static void DestroyConnection(WebsocketConnection* conn)
 }
 
 
-static void CloseConnection(WebsocketConnection* conn)
+static void CloseConnection(WebsocketConnection* conn, uint16_t close_code)
 {
     // we want it to send this message in the polling
     if (conn->m_State == STATE_CONNECTED) {
@@ -264,6 +264,7 @@ static void CloseConnection(WebsocketConnection* conn)
     // state
     SetState(conn, STATE_DISCONNECTED);
 #endif
+    conn->m_CloseCode = close_code;
 }
 
 static bool IsConnectionValid(WebsocketConnection* conn)
@@ -331,7 +332,7 @@ static int LuaDisconnect(lua_State* L)
 
     if (IsConnectionValid(conn))
     {
-        CloseConnection(conn);
+        CloseConnection(conn, 0);
     }
     return 0;
 }
@@ -434,6 +435,12 @@ void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int ms
 
         delete conn->m_HandshakeResponse;
         conn->m_HandshakeResponse = 0;
+    }
+
+    if (event == EVENT_DISCONNECTED)
+    {
+        lua_pushinteger(L, conn->m_CloseCode);
+        lua_setfield(L, -2, "code");
     }
 
     dmScript::PCall(L, 3, 0);
@@ -576,7 +583,7 @@ static dmExtension::Result Finalize(dmExtension::Params* params)
     return dmExtension::RESULT_OK;
 }
 
-Result PushMessage(WebsocketConnection* conn, MessageType type, int length, const uint8_t* buffer)
+Result PushMessage(WebsocketConnection* conn, MessageType type, int length, const uint8_t* buffer, uint16_t code)
 {
     if (conn->m_Messages.Full())
         conn->m_Messages.OffsetCapacity(4);
@@ -584,6 +591,7 @@ Result PushMessage(WebsocketConnection* conn, MessageType type, int length, cons
     Message msg;
     msg.m_Type = (uint32_t)type;
     msg.m_Length = length;
+    msg.m_Code = code;
     conn->m_Messages.Push(msg);
 
     if ((conn->m_BufferSize + length) >= conn->m_BufferCapacity)
@@ -666,12 +674,12 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                 if (EVENT_DISCONNECTED == msg.m_Type)
                 {
                     conn->m_Status = RESULT_OK;
-                    CloseConnection(conn);
+                    CloseConnection(conn, msg.m_Code);
 
                     // Put the message at the front of the buffer
                     conn->m_Messages.SetSize(0);
                     conn->m_BufferSize = 0;
-                    PushMessage(conn, MESSAGE_TYPE_CLOSE, msg.m_Length, (const uint8_t*)conn->m_Buffer+offset);
+                    PushMessage(conn, MESSAGE_TYPE_CLOSE, msg.m_Length, (const uint8_t*)conn->m_Buffer+offset, msg.m_Code);
                     close_received = true;
                     break;
                 }

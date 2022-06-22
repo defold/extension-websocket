@@ -1,4 +1,4 @@
-local URL = "echo.websocket.org"
+local URL = "echo.websocket.events"
 
 local function click_button(node, action)
 	return gui.is_enabled(node) and action.pressed and gui.pick_node(node, action.x, action.y)
@@ -57,7 +57,7 @@ end
 
 local function websocket_callback(self, conn, data)
 	if data.event == websocket.EVENT_DISCONNECTED then
-		log("Disconnected: " .. tostring(conn))
+		log("Disconnected: " .. tostring(conn) .. " Code: " .. data.code .. " Message: " .. tostring(data.message))
 		self.connection = nil
 		update_gui(self)
 	elseif data.event == websocket.EVENT_CONNECTED then

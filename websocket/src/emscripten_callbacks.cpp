@@ -21,7 +21,8 @@ EM_BOOL Emscripten_WebSocketOnError(int eventType, const EmscriptenWebSocketErro
 EM_BOOL Emscripten_WebSocketOnClose(int eventType, const EmscriptenWebSocketCloseEvent *websocketEvent, void *userData) {
     DebugLog(1, "WebSocket OnClose");
     WebsocketConnection* conn = (WebsocketConnection*)userData;
-    PushMessage(conn, MESSAGE_TYPE_CLOSE, 0, 0);
+    int length = strlen(websocketEvent->reason);
+    PushMessage(conn, MESSAGE_TYPE_CLOSE, length, (uint8_t*)websocketEvent->reason, websocketEvent->code);
     SetState(conn, STATE_DISCONNECTED);
     return EM_TRUE;
 }
@@ -33,7 +34,7 @@ EM_BOOL Emscripten_WebSocketOnMessage(int eventType, const EmscriptenWebSocketMe
     {
         length--;
     }
-    PushMessage(conn, MESSAGE_TYPE_NORMAL, length, websocketEvent->data);
+    PushMessage(conn, MESSAGE_TYPE_NORMAL, length, websocketEvent->data, 0);
     return EM_TRUE;
 }
 

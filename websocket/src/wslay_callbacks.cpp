@@ -124,7 +124,7 @@ void WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event
     WebsocketConnection* conn = (WebsocketConnection*)user_data;
     if (arg->opcode == WSLAY_TEXT_FRAME || arg->opcode == WSLAY_BINARY_FRAME)
     {
-        PushMessage(conn, MESSAGE_TYPE_NORMAL, arg->msg_length, arg->msg);
+        PushMessage(conn, MESSAGE_TYPE_NORMAL, arg->msg_length, arg->msg, 0);
     } else if (arg->opcode == WSLAY_CONNECTION_CLOSE)
     {
         // The first two bytes is the close code
@@ -137,8 +137,9 @@ void WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event
         }
 
         char buffer[1024];
-        len = dmSnPrintf(buffer, sizeof(buffer), "Server closing (%u). Reason: '%s'", wslay_event_get_status_code_received(ctx), reason);
-        PushMessage(conn, MESSAGE_TYPE_CLOSE, len, (const uint8_t*)buffer);
+        uint16_t status_code = wslay_event_get_status_code_received(ctx);
+        len = dmSnPrintf(buffer, sizeof(buffer), "Server closing (%u). Reason: '%s'", status_code, reason);
+        PushMessage(conn, MESSAGE_TYPE_CLOSE, len, (const uint8_t*)buffer, status_code);
 
         if (!wslay_event_get_close_sent(ctx))
         {

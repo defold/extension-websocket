@@ -61,6 +61,14 @@
             type: string
             desc: The received data if event is `websocket.EVENT_MESSAGE`. Error message otherwise
 
+          - name: handshake_response
+            type: table
+            desc: Handshake response information (status, headers etc)
+
+          - name: code
+            type: number
+            desc: Status code received from the server if the server closed the connection. Only present if event is `EVENT_DISCONNECTED`.
+
 
     returns:
       - name: connection
@@ -86,7 +94,7 @@
               end
 
               function init(self)
-                self.url = "ws://echo.websocket.org"
+                self.url = "ws://echo.websocket.events"
                 local params = {
                   timeout = 3000,
                   headers = "Sec-WebSocket-Protocol: chat\r\nOrigin: mydomain.com\r\n"

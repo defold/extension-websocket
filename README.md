@@ -53,3 +53,7 @@ For command line debugging, there's
 This extension makes use of the C library WSlay by @tatsuhiro-t:
 
 * https://github.com/tatsuhiro-t/wslay
+
+The test server used by the example:
+
+* https://www.lob.com/blog/websocket-org-is-down-here-is-an-alternative
