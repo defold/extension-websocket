@@ -135,7 +135,7 @@ void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_byt
 
 #define CLOSE_CONN(...) \
     SetStatus(conn, RESULT_ERROR, __VA_ARGS__); \
-    CloseConnection(conn, 0);
+    CloseConnection(conn);
 
 
 void SetState(WebsocketConnection* conn, State state)
@@ -244,7 +244,7 @@ static void DestroyConnection(WebsocketConnection* conn)
 }
 
 
-static void CloseConnection(WebsocketConnection* conn, uint16_t close_code)
+static void CloseConnection(WebsocketConnection* conn)
 {
     // we want it to send this message in the polling
     if (conn->m_State == STATE_CONNECTED) {
@@ -264,7 +264,6 @@ static void CloseConnection(WebsocketConnection* conn, uint16_t close_code)
     // state
     SetState(conn, STATE_DISCONNECTED);
 #endif
-    conn->m_CloseCode = close_code;
 }
 
 static bool IsConnectionValid(WebsocketConnection* conn)
@@ -332,7 +331,7 @@ static int LuaDisconnect(lua_State* L)
 
     if (IsConnectionValid(conn))
     {
-        CloseConnection(conn, 0);
+        CloseConnection(conn);
     }
     return 0;
 }
@@ -654,7 +653,7 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             --size;
             DestroyConnection(conn);
         }
-        else if (STATE_CONNECTED == conn->m_State)
+        else if ((STATE_CONNECTED == conn->m_State) || (STATE_DISCONNECTING == conn->m_State))
         {
 #if defined(HAVE_WSLAY)
             int r = WSL_Poll(conn->m_Ctx);
@@ -666,7 +665,6 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 #endif
 
             uint32_t offset = 0;
-            bool close_received = false;
             for (uint32_t i = 0; i < conn->m_Messages.Size(); ++i)
             {
                 const Message& msg = conn->m_Messages[i];
@@ -674,24 +672,18 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                 if (EVENT_DISCONNECTED == msg.m_Type)
                 {
                     conn->m_Status = RESULT_OK;
-                    CloseConnection(conn, msg.m_Code);
-
-                    // Put the message at the front of the buffer
-                    conn->m_Messages.SetSize(0);
-                    conn->m_BufferSize = 0;
-                    PushMessage(conn, MESSAGE_TYPE_CLOSE, msg.m_Length, (const uint8_t*)conn->m_Buffer+offset, msg.m_Code);
-                    close_received = true;
+                    // close the connection and immediately transition to the DISCONNECTED
+                    // state
+                    SetState(conn, STATE_DISCONNECTED);
+                    conn->m_CloseCode = msg.m_Code;
                     break;
                 }
 
                 HandleCallback(conn, EVENT_MESSAGE, offset, msg.m_Length);
                 offset += msg.m_Length;
             }
-            if (!close_received) // saving the close message for next step
-            {
-                conn->m_Messages.SetSize(0);
-                conn->m_BufferSize = 0;
-            }
+            conn->m_Messages.SetSize(0);
+            conn->m_BufferSize = 0;
         }
         else if (STATE_HANDSHAKE_READ == conn->m_State)
         {
