@@ -436,6 +436,12 @@ void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int ms
         conn->m_HandshakeResponse = 0;
     }
 
+    if (event == EVENT_DISCONNECTED)
+    {
+        lua_pushinteger(L, conn->m_CloseCode);
+        lua_setfield(L, -2, "code");
+    }
+
     dmScript::PCall(L, 3, 0);
 
     dmScript::TeardownCallback(conn->m_Callback);
@@ -576,7 +582,7 @@ static dmExtension::Result Finalize(dmExtension::Params* params)
     return dmExtension::RESULT_OK;
 }
 
-Result PushMessage(WebsocketConnection* conn, MessageType type, int length, const uint8_t* buffer)
+Result PushMessage(WebsocketConnection* conn, MessageType type, int length, const uint8_t* buffer, uint16_t code)
 {
     if (conn->m_Messages.Full())
         conn->m_Messages.OffsetCapacity(4);
@@ -584,6 +590,7 @@ Result PushMessage(WebsocketConnection* conn, MessageType type, int length, cons
     Message msg;
     msg.m_Type = (uint32_t)type;
     msg.m_Length = length;
+    msg.m_Code = code;
     conn->m_Messages.Push(msg);
 
     if ((conn->m_BufferSize + length) >= conn->m_BufferCapacity)
@@ -646,7 +653,7 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             --size;
             DestroyConnection(conn);
         }
-        else if (STATE_CONNECTED == conn->m_State)
+        else if ((STATE_CONNECTED == conn->m_State) || (STATE_DISCONNECTING == conn->m_State))
         {
 #if defined(HAVE_WSLAY)
             int r = WSL_Poll(conn->m_Ctx);
@@ -658,7 +665,6 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 #endif
 
             uint32_t offset = 0;
-            bool close_received = false;
             for (uint32_t i = 0; i < conn->m_Messages.Size(); ++i)
             {
                 const Message& msg = conn->m_Messages[i];
@@ -666,24 +672,18 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                 if (EVENT_DISCONNECTED == msg.m_Type)
                 {
                     conn->m_Status = RESULT_OK;
-                    CloseConnection(conn);
-
-                    // Put the message at the front of the buffer
-                    conn->m_Messages.SetSize(0);
-                    conn->m_BufferSize = 0;
-                    PushMessage(conn, MESSAGE_TYPE_CLOSE, msg.m_Length, (const uint8_t*)conn->m_Buffer+offset);
-                    close_received = true;
+                    // close the connection and immediately transition to the DISCONNECTED
+                    // state
+                    SetState(conn, STATE_DISCONNECTED);
+                    conn->m_CloseCode = msg.m_Code;
                     break;
                 }
 
                 HandleCallback(conn, EVENT_MESSAGE, offset, msg.m_Length);
                 offset += msg.m_Length;
             }
-            if (!close_received) // saving the close message for next step
-            {
-                conn->m_Messages.SetSize(0);
-                conn->m_BufferSize = 0;
-            }
+            conn->m_Messages.SetSize(0);
+            conn->m_BufferSize = 0;
         }
         else if (STATE_HANDSHAKE_READ == conn->m_State)
         {

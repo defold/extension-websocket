@@ -80,6 +80,7 @@ namespace dmWebsocket
 
     struct Message
     {
+        uint16_t m_Code;
         uint32_t m_Length:30;
         uint32_t m_Type:2;
     };
@@ -129,6 +130,7 @@ namespace dmWebsocket
         int                             m_BufferSize;
         uint32_t                        m_BufferCapacity;
         Result                          m_Status;
+        uint16_t                        m_CloseCode;
         uint8_t                         m_SSL:1;
         uint8_t                         m_HasHandshakeData:1;
         uint8_t                         :7;
@@ -159,7 +161,7 @@ namespace dmWebsocket
     void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int msg_length);
 
     // Messages
-    Result PushMessage(WebsocketConnection* conn, MessageType type, int length, const uint8_t* msg);
+    Result PushMessage(WebsocketConnection* conn, MessageType type, int length, const uint8_t* msg, uint16_t code);
 
 #if defined(HAVE_WSLAY)
     // Wslay callbacks
