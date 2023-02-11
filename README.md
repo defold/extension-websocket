@@ -13,6 +13,31 @@ We recommend using a link to a zip file of a [specific release](https://github.c
 
 https://defold.com/extension-websocket/api/
 
+## Additional server API reference
+
+This extension also includes a simple websocket server (ws://). Websocket server is not supported in HTML5 builds. Secure (wss://) websocket server is not supported.
+
+```
+websocket.listen(port, max_connections, connection_timeout, callback)
+```
+- `port`, number. Port to listen on.
+- `max_connections`, number. Maximum allowed number of connections.
+- `connection_timeout`, number. Time in seconds to wait for a connnection to be established.
+- `callback`, function. Callback that receives connection events. The same as for the `connect` function.
+
+Starts a websocket server on the specified port.
+
+```
+websocket.stop_listening()
+```
+Stops the websocket server.
+
+There are additional fields inside the `data` table in the callback.
+- `request_method`, string. Request method, e.g. `"GET"`. In case of running as a server.
+- `request_resource`, string. Request resource, e.g. `"/"`. In case of running as a server.
+- `ip_address`, string. IP address of the connection.
+- `port`, number. Port of the connection.
+
 ## Debugging
 
 In order to make it easier to debug this extension, we provide a `game.project` setting `websocket.debug` (edit `game.project` as text and add):

@@ -8,12 +8,12 @@
 #include <dmsdk/sdk.h>
 
 #if !defined(__EMSCRIPTEN__)
-    #define HAVE_WSLAY 1
+#define HAVE_WSLAY 1
 #endif
 
 #if defined(HAVE_WSLAY)
-    #include <wslay/wslay.h>
-    #endif
+#include <wslay/wslay.h>
+#endif
 
 #if defined(__EMSCRIPTEN__)
 #include "emscripten/websocket.h"
@@ -41,8 +41,10 @@ namespace dmWebsocket
     {
         STATE_CREATE,
         STATE_CONNECTING,
-        STATE_HANDSHAKE_WRITE,
-        STATE_HANDSHAKE_READ,
+        STATE_CLIENT_HANDSHAKE_WRITE,
+        STATE_CLIENT_HANDSHAKE_READ,
+        STATE_SERVER_HANDSHAKE_READ,
+        STATE_SERVER_HANDSHAKE_WRITE,
         STATE_CONNECTED,
         STATE_DISCONNECTING,
         STATE_DISCONNECTED,
@@ -99,6 +101,8 @@ namespace dmWebsocket
         int m_HttpMinor;
         int m_ResponseStatusCode;
         int m_BodyOffset;
+        char m_Method[20];
+        char m_Resource[1024];
         dmArray<HttpHeader*> m_Headers;
 
         ~HandshakeResponse();
@@ -135,6 +139,8 @@ namespace dmWebsocket
         uint8_t                         m_HasHandshakeData:1;
         uint8_t                         :7;
         HandshakeResponse*              m_HandshakeResponse;
+        char                            m_RequestMethod[20];
+        char                            m_RequestResource[1024];
     };
 
     // Set error message
@@ -156,6 +162,8 @@ namespace dmWebsocket
     Result SendClientHandshake(WebsocketConnection* conn);
     Result ReceiveHeaders(WebsocketConnection* conn);
     Result VerifyHeaders(WebsocketConnection* conn);
+    Result VerifyServerHeaders(WebsocketConnection* conn);
+    Result SendServerHandshake(WebsocketConnection* conn);
 
     // Callback to Lua
     void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int msg_length);
@@ -166,6 +174,7 @@ namespace dmWebsocket
 #if defined(HAVE_WSLAY)
     // Wslay callbacks
     int     WSL_Init(wslay_event_context_ptr* ctx, ssize_t buffer_size, void* userctx);
+    int     WSL_InitServer(wslay_event_context_ptr* ctx, ssize_t buffer_size, void* userctx);
     void    WSL_Exit(wslay_event_context_ptr ctx);
     int     WSL_Close(wslay_event_context_ptr ctx);
     int     WSL_Poll(wslay_event_context_ptr ctx);

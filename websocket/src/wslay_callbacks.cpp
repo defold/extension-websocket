@@ -46,6 +46,14 @@ int WSL_Init(wslay_event_context_ptr* ctx, ssize_t buffer_size, void* userctx)
     return ret;
 }
 
+int WSL_InitServer(wslay_event_context_ptr* ctx, ssize_t buffer_size, void* userctx)
+{
+    int ret = -1;
+    ret = wslay_event_context_server_init(ctx, &g_WslCallbacks, userctx);
+    if (ret == 0)
+        wslay_event_config_set_max_recv_msg_length(*ctx, buffer_size);
+    return ret;
+}
 
 void WSL_Exit(wslay_event_context_ptr ctx)
 {
@@ -56,6 +64,7 @@ int WSL_Close(wslay_event_context_ptr ctx)
 {
     const char* reason = "";
     wslay_event_queue_close(ctx, WSLAY_CODE_NORMAL_CLOSURE, (const uint8_t*)reason, 0);
+    wslay_event_send(ctx); // Send event now or it won't be sent. At least in the server mode.
     return 0;
 }
 

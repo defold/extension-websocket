@@ -9,6 +9,7 @@
 #include <dmsdk/dlib/connection_pool.h>
 #include <dmsdk/dlib/thread.h>
 #include <dmsdk/dlib/sslsocket.h>
+#include "http_server.h"
 #include <ctype.h> // isprint et al
 
 #if defined(__EMSCRIPTEN__)
@@ -32,8 +33,10 @@ struct WebsocketContext
     dmArray<WebsocketConnection*>   m_Connections;
     dmConnectionPool::HPool         m_Pool;
     uint32_t                        m_Initialized:1;
-} g_Websocket;
+    wsHttpServer::HServer           m_Server;
+    dmScript::LuaCallbackInfo*      m_ServerCallback;
 
+} g_Websocket;
 
 #define STRING_CASE(_X) case _X: return #_X;
 
@@ -55,8 +58,10 @@ const char* StateToString(State err)
     switch(err) {
         STRING_CASE(STATE_CREATE);
         STRING_CASE(STATE_CONNECTING);
-        STRING_CASE(STATE_HANDSHAKE_WRITE);
-        STRING_CASE(STATE_HANDSHAKE_READ);
+        STRING_CASE(STATE_CLIENT_HANDSHAKE_WRITE);
+        STRING_CASE(STATE_CLIENT_HANDSHAKE_READ);
+        STRING_CASE(STATE_SERVER_HANDSHAKE_WRITE);
+        STRING_CASE(STATE_SERVER_HANDSHAKE_READ);
         STRING_CASE(STATE_CONNECTED);
         STRING_CASE(STATE_DISCONNECTING);
         STRING_CASE(STATE_DISCONNECTED);
@@ -132,11 +137,9 @@ void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_byt
     dmLogWarning("%s", buffer);
 }
 
-
 #define CLOSE_CONN(...) \
     SetStatus(conn, RESULT_ERROR, __VA_ARGS__); \
     CloseConnection(conn);
-
 
 void SetState(WebsocketConnection* conn, State state)
 {
@@ -147,7 +150,6 @@ void SetState(WebsocketConnection* conn, State state)
         DebugLog(1, "%s -> %s", StateToString(prev_state), StateToString(conn->m_State));
     }
 }
-
 
 Result SetStatus(WebsocketConnection* conn, Result status, const char* format, ...)
 {
@@ -193,6 +195,41 @@ static WebsocketConnection* CreateConnection(const char* url)
     conn->m_HasHandshakeData = 0;
     conn->m_HandshakeResponse = 0;
     conn->m_ConnectionThread = 0;
+    conn->m_RequestMethod[0] = 0;
+    conn->m_RequestResource[0] = 0;
+
+#if defined(HAVE_WSLAY)
+    conn->m_Ctx = 0;
+#endif
+#if defined(__EMSCRIPTEN__)
+    conn->m_WS = 0;
+#endif
+
+    return conn;
+}
+
+static WebsocketConnection* ConvertToConnection(dmSocket::Socket socket)
+{
+    WebsocketConnection* conn = new WebsocketConnection;
+    conn->m_BufferCapacity = g_Websocket.m_BufferSize;
+    conn->m_Buffer = (char*)malloc(conn->m_BufferCapacity);
+    conn->m_Buffer[0] = 0;
+    conn->m_BufferSize = 0;
+    conn->m_ConnectTimeout = 0;
+
+    conn->m_SSL = 0;
+    conn->m_State = STATE_CREATE;
+
+    conn->m_Callback = 0;
+    conn->m_Connection = 0;
+    conn->m_Socket = socket;
+    conn->m_SSLSocket = 0;
+    conn->m_Status = RESULT_OK;
+    conn->m_HasHandshakeData = 0;
+    conn->m_HandshakeResponse = 0;
+    conn->m_ConnectionThread = 0;
+    conn->m_RequestMethod[0] = 0;
+    conn->m_RequestResource[0] = 0;
 
 #if defined(HAVE_WSLAY)
     conn->m_Ctx = 0;
@@ -214,7 +251,7 @@ static void DestroyConnection(WebsocketConnection* conn)
     free((void*)conn->m_CustomHeaders);
     free((void*)conn->m_Protocol);
 
-    if (conn->m_Callback)
+    if (conn->m_Callback && conn->m_Callback != g_Websocket.m_ServerCallback)
         dmScript::DestroyCallback(conn->m_Callback);
 
 #if defined(__EMSCRIPTEN__)
@@ -242,7 +279,6 @@ static void DestroyConnection(WebsocketConnection* conn)
     delete conn;
     DebugLog(2, "DestroyConnection: %p", conn);
 }
-
 
 static void CloseConnection(WebsocketConnection* conn)
 {
@@ -279,9 +315,6 @@ static bool IsConnectionValid(WebsocketConnection* conn)
     return false;
 }
 
-/*#
-*
-*/
 static int LuaConnect(lua_State* L)
 {
     DM_LUA_STACK_CHECK(L, 1);
@@ -386,6 +419,82 @@ static int LuaSend(lua_State* L)
     return 0;
 }
 
+void HttpServerRequestCallback(void* user_data, wsHttpServer::Request* request)
+{
+    if (g_Websocket.m_Connections.Size() >= g_Websocket.m_Server->m_Connections.Capacity()) {
+        request->m_CloseConnection = 1;
+        return;
+    }
+    request->m_RemoveConnection = 1;
+
+    WebsocketConnection* conn = ConvertToConnection(request->m_Socket);
+    conn->m_ConnectTimeout = dmTime::GetTime() + 3000 * 1000;
+    conn->m_CustomHeaders = 0;
+    conn->m_Protocol = 0;
+
+    conn->m_Callback = g_Websocket.m_ServerCallback;
+
+    if (g_Websocket.m_Connections.Full())
+        g_Websocket.m_Connections.OffsetCapacity(2);
+    g_Websocket.m_Connections.Push(conn);
+
+    SetState(conn, STATE_SERVER_HANDSHAKE_READ);
+}
+
+static int LuaListen(lua_State* L)
+{
+    DM_LUA_STACK_CHECK(L, 1);
+
+    if (!g_Websocket.m_Initialized)
+        return DM_LUA_ERROR("The web socket module isn't initialized");
+
+    if (g_Websocket.m_Server)
+        return DM_LUA_ERROR("The web server is already initialized");
+
+    const int port = luaL_checkinteger(L, 1);
+    const int max_connections = luaL_checkinteger(L, 2);
+    const int connection_timeout = luaL_checkinteger(L, 3);
+    g_Websocket.m_ServerCallback = dmScript::CreateCallback(L, 4);
+
+    wsHttpServer::NewParams http_params;
+    http_params.m_Userdata = 0;
+    http_params.m_HttpRequest = HttpServerRequestCallback;
+    http_params.m_MaxConnections = max_connections;
+    http_params.m_ConnectionTimeout = connection_timeout;
+
+    wsHttpServer::HServer server;
+    wsHttpServer::Result result = wsHttpServer::New(&http_params, port, &server);
+    bool is_success = false;
+    if (result == wsHttpServer::RESULT_OK) {
+        g_Websocket.m_Server = server;
+        is_success = true;
+    }
+
+    lua_pushboolean(L, is_success);
+    return 1;
+}
+
+static int LuaStopListening(lua_State* L)
+{
+     DM_LUA_STACK_CHECK(L, 0);
+
+    if (!g_Websocket.m_Initialized)
+        return DM_LUA_ERROR("The web socket module isn't initialized");
+
+    if (!g_Websocket.m_Server)
+        return DM_LUA_ERROR("The web server is not initialized");
+
+    if (g_Websocket.m_ServerCallback)
+    {
+        dmScript::DestroyCallback(g_Websocket.m_ServerCallback);
+        g_Websocket.m_ServerCallback = 0;
+    }
+
+    wsHttpServer::Delete(g_Websocket.m_Server);
+    g_Websocket.m_Server = 0;
+    return 0;
+}
+
 void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int msg_length)
 {
     if (!dmScript::IsCallbackValid(conn->m_Callback))
@@ -436,6 +545,27 @@ void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int ms
         conn->m_HandshakeResponse = 0;
     }
 
+    dmSocket::Address address;
+    uint16_t port;
+    dmSocket::GetName(conn->m_Socket, &address, &port);
+    char* ip_address = dmSocket::AddressToIPString(address);
+
+    lua_pushstring(L, ip_address);
+    lua_setfield(L, -2, "ip_address");
+    free(ip_address);
+
+    lua_pushinteger(L, port);
+    lua_setfield(L, -2, "port");
+
+    if (conn->m_RequestMethod[0] != 0)
+    {
+        lua_pushstring(L, conn->m_RequestMethod);
+        lua_setfield(L, -2, "request_method");
+
+        lua_pushstring(L, conn->m_RequestResource);
+        lua_setfield(L, -2, "request_resource");
+    }
+
     if (event == EVENT_DISCONNECTED)
     {
         lua_pushinteger(L, conn->m_CloseCode);
@@ -446,7 +576,6 @@ void HandleCallback(WebsocketConnection* conn, int event, int msg_offset, int ms
 
     dmScript::TeardownCallback(conn->m_Callback);
 }
-
 
 HttpHeader::HttpHeader(const char* key, const char* value)
 {
@@ -483,7 +612,6 @@ HandshakeResponse::~HandshakeResponse()
     }
 }
 
-
 // ***************************************************************************************************
 // Life cycle functions
 
@@ -493,6 +621,8 @@ static const luaL_reg Websocket_module_methods[] =
     {"connect", LuaConnect},
     {"disconnect", LuaDisconnect},
     {"send", LuaSend},
+    {"listen", LuaListen},
+    {"stop_listening", LuaStopListening},
     {0, 0}
 };
 
@@ -535,6 +665,8 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
     g_Websocket.m_Connections.SetCapacity(4);
     g_Websocket.m_Pool = 0;
     g_Websocket.m_Initialized = 0;
+    g_Websocket.m_Server = 0;
+    g_Websocket.m_ServerCallback = 0;
 
     dmConnectionPool::Params pool_params;
     pool_params.m_MaxConnections = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.max_connections", 2);
@@ -627,11 +759,15 @@ static void ConnectionWorker(void* _conn)
         CLOSE_CONN("Failed to open connection: %s", dmSocket::ResultToString(sr));
         return;
     }
-    SetState(conn, STATE_HANDSHAKE_WRITE);
+    SetState(conn, STATE_CLIENT_HANDSHAKE_WRITE);
 }
 
 static dmExtension::Result OnUpdate(dmExtension::Params* params)
 {
+    if (g_Websocket.m_Server) {
+        wsHttpServer::Update(g_Websocket.m_Server);
+    }
+
     uint32_t size = g_Websocket.m_Connections.Size();
 
     for (uint32_t i = 0; i < size; ++i)
@@ -685,7 +821,7 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             conn->m_Messages.SetSize(0);
             conn->m_BufferSize = 0;
         }
-        else if (STATE_HANDSHAKE_READ == conn->m_State)
+        else if (STATE_CLIENT_HANDSHAKE_READ == conn->m_State)
         {
             if (CheckConnectTimeout(conn))
             {
@@ -732,7 +868,7 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             SetState(conn, STATE_CONNECTED);
             HandleCallback(conn, EVENT_CONNECTED, 0, 0);
         }
-        else if (STATE_HANDSHAKE_WRITE == conn->m_State)
+        else if (STATE_CLIENT_HANDSHAKE_WRITE == conn->m_State)
         {
             if (CheckConnectTimeout(conn))
             {
@@ -758,7 +894,77 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                 continue;
             }
 
-            SetState(conn, STATE_HANDSHAKE_READ);
+            SetState(conn, STATE_CLIENT_HANDSHAKE_READ);
+        }
+        else if (STATE_SERVER_HANDSHAKE_READ == conn->m_State)
+        {
+            dmLogInfo("STATE_SERVER_HANDSHAKE_READ");
+            if (CheckConnectTimeout(conn))
+            {
+                CLOSE_CONN("Connect sequence timed out");
+                continue;
+            }
+
+            Result result = ReceiveHeaders(conn);
+            if (RESULT_WOULDBLOCK == result)
+            {
+                continue;
+            }
+
+            if (RESULT_OK != result)
+            {
+                CLOSE_CONN("Failed receiving handshake headers. %d", result);
+                continue;
+            }
+
+            // Verifies headers, and also stages any initial sent data
+            result = VerifyServerHeaders(conn);
+            if (RESULT_OK != result)
+            {
+                CLOSE_CONN("Failed verifying handshake headers:\n%s\n\n", conn->m_Buffer);
+                continue;
+            }
+
+            SetState(conn, STATE_SERVER_HANDSHAKE_WRITE);
+        }
+        else if (STATE_SERVER_HANDSHAKE_WRITE == conn->m_State)
+        {
+            dmLogInfo("STATE_SERVER_HANDSHAKE_WRITE");
+            if (CheckConnectTimeout(conn))
+            {
+                CLOSE_CONN("Connect sequence timed out");
+                continue;
+            }
+
+            Result result = SendServerHandshake(conn);
+            if (RESULT_WOULDBLOCK == result)
+            {
+                continue;
+            }
+            if (RESULT_OK != result)
+            {
+                CLOSE_CONN("Failed sending handshake: %d", result);
+                continue;
+            }
+
+#if defined(HAVE_WSLAY)
+            int r = WSL_InitServer(&conn->m_Ctx, g_Websocket.m_BufferSize, (void*)conn);
+            if (0 != r)
+            {
+                CLOSE_CONN("Failed initializing wslay: %s", WSL_ResultToString(r));
+                continue;
+            }
+
+            dmSocket::SetNoDelay(conn->m_Socket, true);
+            // Don't go lower than 1000 since some platforms might not have that good precision
+            dmSocket::SetReceiveTimeout(conn->m_Socket, 1000);
+            if (conn->m_SSLSocket)
+                dmSSLSocket::SetReceiveTimeout(conn->m_SSLSocket, 1000);
+
+            dmSocket::SetBlocking(conn->m_Socket, false);
+#endif
+            SetState(conn, STATE_CONNECTED);
+            HandleCallback(conn, EVENT_CONNECTED, 0, 0);
         }
         else if (STATE_CREATE == conn->m_State)
         {
