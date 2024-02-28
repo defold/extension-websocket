@@ -39,11 +39,7 @@ const char* WSL_ResultToString(int err)
 int WSL_Init(wslay_event_context_ptr* ctx, ssize_t buffer_size, void* userctx)
 {
     // Currently only supports client implementation
-    int ret = -1;
-    ret = wslay_event_context_client_init(ctx, &g_WslCallbacks, userctx);
-    if (ret == 0)
-        wslay_event_config_set_max_recv_msg_length(*ctx, buffer_size);
-    return ret;
+    return wslay_event_context_client_init(ctx, &g_WslCallbacks, userctx);
 }
 
 
