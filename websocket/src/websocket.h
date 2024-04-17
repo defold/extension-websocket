@@ -16,7 +16,7 @@
     #endif
 
 #if defined(__EMSCRIPTEN__)
-#include "emscripten/websocket.h"
+#include <emscripten/websocket.h> 
 #endif
 
 #include <dmsdk/dlib/connection_pool.h>

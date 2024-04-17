@@ -6,3 +6,10 @@ platforms:
         context:
             includes:   ["upload/websocket/include/wslay"]
             defines:    ["HAVE_CONFIG_H"]
+
+    wasm-web:
+        context:
+            linkFlags:  ["-lwebsocket.js"]
+    js-web:
+        context:
+            linkFlags:  ["-lwebsocket.js"]

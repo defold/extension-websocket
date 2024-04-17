@@ -12,3 +12,4 @@ builtins
 lws_source
 lws_build
 *.profraw
+*.der
