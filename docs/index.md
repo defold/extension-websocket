@@ -5,9 +5,14 @@ brief: This manual covers how to use websockets with Defold
 
 # Defold websocket extension API documentation
 
+## Client
+
 This extension supports both secure (`wss://`) and non secure (`ws://`) websocket connections.
 All platforms should support this extension.
 
+## Server
+
+This extension can also act as a non secure websocket server. The server is not supported on HTML5.
 
 Here is how you connect to a websocket and listen to events:
 
@@ -44,6 +49,22 @@ function finalize(self)
     if self.connection ~= nil then
         websocket.disconnect(self.connection)
     end
+end
+```
+
+To act as a server you can use the `websocket.listen()` function. You would receive the incoming connections in the `websocket.EVENT_CONNECTED` event.
+
+```lua
+function init(self)
+    local port = 8080
+    local max_connections = 16
+    local connection_timeout = 1
+    self.url = "localhost:" .. port
+    websocket.listen(port, max_connections, connection_timeout, websocket_callback)
+end
+
+function finalize(self)
+    websocket.stop_listening()
 end
 ```
 
