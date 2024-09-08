@@ -11,7 +11,9 @@ We recommend using a link to a zip file of a [specific release](https://github.c
 
 ## API reference
 
-https://defold.com/extension-websocket/api/
+https://defold.com/extension-websocket/
+
+https://defold.com/extension-websocket/websocket_api/
 
 ## Debugging
 
