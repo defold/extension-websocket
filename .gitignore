@@ -13,3 +13,4 @@ lws_source
 lws_build
 *.profraw
 *.der
+/.editor_settings
