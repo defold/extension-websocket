@@ -69,6 +69,22 @@
             type: number
             desc: Status code received from the server if the server closed the connection. Only present if event is `EVENT_DISCONNECTED`.
 
+          - name: request_method
+            type: string
+            desc: Request method, e.g. "GET". In case of running as a server
+
+          - name: request_resource
+            type: string
+            desc: Request resource, e.g. "/". In case of running as a server
+
+          - name: ip_address
+            type: string
+            desc: IP address of the connection
+
+          - name: port
+            type: number
+            desc: Port of the connection
+
 
     returns:
       - name: connection
@@ -158,6 +174,30 @@
                 self.connection = websocket.connect(self.url, params, websocket_callback)
               end
             ```
+#*****************************************************************************************************
+
+  - name: listen
+    type: function
+    desc: Start listening for connections
+    parameters:
+      - name: port
+        type: number
+        desc: Port to listen on
+      - name: max_connections
+        type: number
+        desc: Maximum allowed number of connections
+      - name: connection_timeout
+        type: number
+        desc: Time in seconds to wait for a connnection to be established
+      - name: callback
+        type: function
+        desc: Callback that receives connection events
+
+#*****************************************************************************************************
+
+  - name: stop_listening
+    type: function
+    desc: Stops listening for connections
 
 #*****************************************************************************************************
 
