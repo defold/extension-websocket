@@ -123,7 +123,7 @@ Result ReceiveHeaders(WebsocketConnection* conn)
     dmSocket::Result sr = WaitForSocket(conn, dmSocket::SELECTOR_KIND_READ, SOCKET_WAIT_TIMEOUT);
     if (dmSocket::RESULT_OK != sr)
     {
-        if (dmSocket::RESULT_WOULDBLOCK)
+        if (dmSocket::RESULT_WOULDBLOCK == sr)
         {
             DebugLog(2, "Waiting for socket to be available for reading");
             return RESULT_WOULDBLOCK;
