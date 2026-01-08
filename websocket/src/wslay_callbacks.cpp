@@ -142,7 +142,7 @@ void WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event
             wslay_event_queue_close(ctx, arg->status_code, (const uint8_t*)buffer, len);
         }
 
-        DebugLog(1, "%s", buffer);
+        DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "%s", buffer);
 
     }
 }

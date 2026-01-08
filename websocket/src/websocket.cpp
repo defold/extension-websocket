@@ -29,6 +29,7 @@ struct WebsocketContext
 {
     uint64_t                        m_BufferSize;
     int                             m_Timeout;
+    int                             m_ReceiveTimeout;
     dmArray<WebsocketConnection*>   m_Connections;
     dmConnectionPool::HPool         m_Pool;
     uint32_t                        m_Initialized:1;
@@ -144,7 +145,7 @@ void SetState(WebsocketConnection* conn, State state)
     if (prev_state != state)
     {
         conn->m_State = state;
-        DebugLog(1, "%s -> %s", StateToString(prev_state), StateToString(conn->m_State));
+        DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "%s -> %s", StateToString(prev_state), StateToString(conn->m_State));
     }
 }
 
@@ -160,7 +161,7 @@ Result SetStatus(WebsocketConnection* conn, Result status, const char* format, .
         va_end(lst);
         conn->m_Status = status;
 
-        DebugLog(1, "STATUS: '%s'  len: %u", conn->m_Buffer, conn->m_BufferSize);
+        DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "STATUS: '%s'  len: %u", conn->m_Buffer, conn->m_BufferSize);
     }
     return status;
 }
@@ -240,7 +241,7 @@ static void DestroyConnection(WebsocketConnection* conn)
     }
 
     delete conn;
-    DebugLog(2, "DestroyConnection: %p", conn);
+    DebugLog(dmWebsocket::DEBUG_VERBOSE, "DestroyConnection: %p", conn);
 }
 
 
@@ -532,6 +533,7 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
 {
     g_Websocket.m_BufferSize = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.buffer_size", 64 * 1024);
     g_Websocket.m_Timeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.socket_timeout", 500 * 1000);
+    g_Websocket.m_ReceiveTimeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.receive_timeout", 500 * 1000);
     g_Websocket.m_Connections.SetCapacity(4);
     g_Websocket.m_Pool = 0;
     g_Websocket.m_Initialized = 0;
@@ -540,9 +542,20 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
     pool_params.m_MaxConnections = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.max_connections", 2);
     dmConnectionPool::Result result = dmConnectionPool::New(&pool_params, &g_Websocket.m_Pool);
 
-    g_DebugWebSocket = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.debug", 0);
-    if (g_DebugWebSocket)
-        dmLogInfo("dmWebSocket::g_DebugWebSocket == %d", g_DebugWebSocket);
+    const char* debug_level = dmConfigFile::GetString(params->m_ConfigFile, "websocket.debug", "disabled");
+    if (strcmp("state_changes", debug_level))
+    {
+        g_DebugWebSocket = dmWebsocket::DEBUG_STATE_CHANGES;
+    }
+    else if (strcmp("verbose", debug_level))
+    {
+        g_DebugWebSocket = dmWebsocket::DEBUG_VERBOSE;
+    }
+    else
+    {
+        g_DebugWebSocket = dmWebsocket::DEBUG_DISABLED;
+    }
+    dmLogInfo("dmWebSocket::g_DebugWebSocket == %d", g_DebugWebSocket);
 
     if (dmConnectionPool::RESULT_OK != result)
     {
@@ -723,9 +736,9 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
 
             dmSocket::SetNoDelay(conn->m_Socket, true);
             // Don't go lower than 1000 since some platforms might not have that good precision
-            dmSocket::SetReceiveTimeout(conn->m_Socket, 1000);
+            dmSocket::SetReceiveTimeout(conn->m_Socket, g_Websocket.m_ReceiveTimeout);
             if (conn->m_SSLSocket)
-                dmSSLSocket::SetReceiveTimeout(conn->m_SSLSocket, 1000);
+                dmSSLSocket::SetReceiveTimeout(conn->m_SSLSocket, g_Websocket.m_ReceiveTimeout);
 
             dmSocket::SetBlocking(conn->m_Socket, false);
 #endif

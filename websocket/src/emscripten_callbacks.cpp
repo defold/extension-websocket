@@ -5,28 +5,28 @@
 namespace dmWebsocket
 {
 EM_BOOL Emscripten_WebSocketOnOpen(int eventType, const EmscriptenWebSocketOpenEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocket OnOpen");
+    DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "WebSocket OnOpen");
     WebsocketConnection* conn = (WebsocketConnection*)userData;
     SetState(conn, STATE_CONNECTED);
     HandleCallback(conn, EVENT_CONNECTED, 0, 0);
     return EM_TRUE;
 }
 EM_BOOL Emscripten_WebSocketOnError(int eventType, const EmscriptenWebSocketErrorEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocket OnError");
+    DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "WebSocket OnError");
     WebsocketConnection* conn = (WebsocketConnection*)userData;
     conn->m_Status = RESULT_ERROR;
     SetState(conn, STATE_DISCONNECTED);
     return EM_TRUE;
 }
 EM_BOOL Emscripten_WebSocketOnClose(int eventType, const EmscriptenWebSocketCloseEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocket OnClose");
+    DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "WebSocket OnClose");
     WebsocketConnection* conn = (WebsocketConnection*)userData;
     int length = strlen(websocketEvent->reason);
     PushMessage(conn, MESSAGE_TYPE_CLOSE, length, (uint8_t*)websocketEvent->reason, websocketEvent->code);
     return EM_TRUE;
 }
 EM_BOOL Emscripten_WebSocketOnMessage(int eventType, const EmscriptenWebSocketMessageEvent *websocketEvent, void *userData) {
-    DebugLog(1, "WebSocket OnMessage");
+    DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "WebSocket OnMessage");
     WebsocketConnection* conn = (WebsocketConnection*)userData;
     int length = websocketEvent->numBytes;
     if (websocketEvent->isText)

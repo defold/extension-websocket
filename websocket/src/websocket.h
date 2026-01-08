@@ -37,6 +37,13 @@ namespace dmWebsocket
     // Maximum time to wait for a socket
     static const int SOCKET_WAIT_TIMEOUT = 4*1000;
 
+    enum DebugLevel
+    {
+        DEBUG_DISABLED,
+        DEBUG_STATE_CHANGES,
+        DEBUG_VERBOSE
+    };
+
     enum State
     {
         STATE_CREATE,

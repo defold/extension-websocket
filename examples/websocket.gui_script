@@ -1,4 +1,4 @@
-local URL = "echo.websocket.events"
+local URL = "echo.websocket.org"
 
 local function click_button(node, action)
 	return gui.is_enabled(node) and action.pressed and gui.pick_node(node, action.x, action.y)
