@@ -14,3 +14,9 @@ _dependencies = https://github.com/GameAnalytics/defold-openssl/archive/1.0.0.zi
 
 [library]
 include_dirs = websocket
+
+[websocket]
+debug = verbose
+receive_timeout = 500
+send_timeout = 1000
+

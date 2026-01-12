@@ -24,6 +24,8 @@
  */
 #include "wslay_event.h"
 
+#include <dmsdk/sdk.h>
+
 #include <string.h>
 #include <assert.h>
 #include <stdio.h>
@@ -102,6 +104,7 @@ decode(uint32_t* state, uint32_t* codep, uint32_t byte) {
 static ssize_t wslay_event_frame_recv_callback(uint8_t *buf, size_t len,
                                                int flags, void *user_data)
 {
+  dmLogInfo("wslay_event_frame_recv_callback");
   struct wslay_event_frame_user_data *e =
     (struct wslay_event_frame_user_data*)user_data;
   return e->ctx->callbacks.recv_callback(e->ctx, buf, len, flags, e->user_data);
@@ -110,6 +113,7 @@ static ssize_t wslay_event_frame_recv_callback(uint8_t *buf, size_t len,
 static ssize_t wslay_event_frame_send_callback(const uint8_t *data, size_t len,
                                                int flags, void *user_data)
 {
+  dmLogInfo("wslay_event_frame_send_callback");
   struct wslay_event_frame_user_data *e =
     (struct wslay_event_frame_user_data*)user_data;
   return e->ctx->callbacks.send_callback(e->ctx, data, len, flags,
@@ -565,11 +569,14 @@ static int wslay_event_config_get_no_buffering(wslay_event_context_ptr ctx)
 
 int wslay_event_recv(wslay_event_context_ptr ctx)
 {
+  dmLogInfo("wslay_event_recv");
   struct wslay_frame_iocb iocb;
   ssize_t r;
   while(ctx->read_enabled) {
+    dmLogInfo("wslay_event_recv calling wslay_frame_recv");
     memset(&iocb, 0, sizeof(iocb));
     r = wslay_frame_recv(ctx->frame_ctx, &iocb);
+    dmLogInfo("wslay_event_recv r = %ld", r);
     if(r >= 0) {
       int new_frame = 0;
       /* RSV1 is not allowed on control and continuation frames */
@@ -770,6 +777,7 @@ int wslay_event_recv(wslay_event_context_ptr ctx)
       break;
     }
   }
+  dmLogInfo("wslay_event_recv done");
   return 0;
 }
 
@@ -808,6 +816,8 @@ static struct wslay_event_omsg* wslay_event_send_ctrl_queue_pop
 
 int wslay_event_send(wslay_event_context_ptr ctx)
 {
+  dmLogInfo("wslay_event_send");
+
   struct wslay_frame_iocb iocb;
   ssize_t r;
   while(ctx->write_enabled &&

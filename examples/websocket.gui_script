@@ -17,20 +17,28 @@ local function update_gui(self)
 		gui.set_enabled(self.connect_wss_node, true)
 		gui.set_enabled(self.send_node, false)
 		gui.set_enabled(self.close_node, false)
-		gui.set_enabled(self.connection_text, false)
+		gui.set_enabled(self.connection_text, true)
+		gui.set_text(self.connection_text, "Connect to " .. URL)
 	end
 end
 
+local LOG_LINES = {}
 local function log(...)
-	local text = ""
+	local text = os.date("%H:%M:%S") .. " "
 	local len = select("#", ...)
 	for i=1,len  do
 		text = text .. tostring(select(i, ...)) .. (i == len and "" or ", ")
 	end
-
-	print(text)
+	table.insert(LOG_LINES, text)
+	if #LOG_LINES > 20 then
+		table.remove(LOG_LINES, 1)
+	end
+	local s = ""
+	for _,line in ipairs(LOG_LINES) do
+		s = s ..  line .. "\n"
+	end
 	local node = gui.get_node("log")
-	gui.set_text(node, gui.get_text(node) .. "\n" .. text)
+	gui.set_text(node, s)
 end
 
 function init(self)
@@ -66,11 +74,21 @@ local function websocket_callback(self, conn, data)
 	elseif data.event == websocket.EVENT_ERROR then
 		log("Error: '" .. tostring(data.message) .. "'")
 		if data.handshake_response then
-			log("Handshake response status: '" .. tostring(data.handshake_response.status) .. "'")
-			for key, value in pairs(data.handshake_response.headers) do
+			local response = data.handshake_response
+			log("Handshake response status: '" .. tostring(response.status) .. "'")
+			for key, value in pairs(response.headers) do
 				log("Handshake response header: '" .. key .. ": " .. value .. "'")
 			end
-			log("Handshake response body: '" .. tostring(data.handshake_response.response) .. "'")
+			log("Handshake response body: '" .. tostring(response.response) .. "'")
+			
+			local status = response.status
+			if status == 301 or status == 302 or status == 303 or status == 307 or status == 308 then
+				local location = response.headers.location
+				URL = location:match("https+://(.*)/+")
+				log("Handshake redirect to:", response.headers.location)
+				update_gui(self)
+				return
+			end
 		end
 	elseif data.event == websocket.EVENT_MESSAGE then
 		log("Receiving: '" .. tostring(data.message) .. "'")

@@ -30,6 +30,7 @@ struct WebsocketContext
     uint64_t                        m_BufferSize;
     int                             m_Timeout;
     int                             m_ReceiveTimeout;
+    int                             m_SendTimeout;
     dmArray<WebsocketConnection*>   m_Connections;
     dmConnectionPool::HPool         m_Pool;
     uint32_t                        m_Initialized:1;
@@ -54,7 +55,6 @@ const char* ResultToString(Result err)
 const char* StateToString(State err)
 {
     switch(err) {
-        STRING_CASE(STATE_CREATE);
         STRING_CASE(STATE_CONNECTING);
         STRING_CASE(STATE_HANDSHAKE_WRITE);
         STRING_CASE(STATE_HANDSHAKE_READ);
@@ -133,11 +133,12 @@ void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_byt
     dmLogWarning("%s", buffer);
 }
 
-
-#define CLOSE_CONN(...) \
-    SetStatus(conn, RESULT_ERROR, __VA_ARGS__); \
-    CloseConnection(conn);
-
+// has the connect procedure taken too long?
+static bool CheckConnectTimeout(WebsocketConnection* conn)
+{
+    uint64_t t = dmTime::GetTime();
+    return t >= conn->m_ConnectTimeout;
+}
 
 void SetState(WebsocketConnection* conn, State state)
 {
@@ -149,104 +150,9 @@ void SetState(WebsocketConnection* conn, State state)
     }
 }
 
-
-Result SetStatus(WebsocketConnection* conn, Result status, const char* format, ...)
-{
-    if (conn->m_Status == RESULT_OK)
-    {
-        va_list lst;
-        va_start(lst, format);
-
-        conn->m_BufferSize = vsnprintf(conn->m_Buffer, conn->m_BufferCapacity, format, lst);
-        va_end(lst);
-        conn->m_Status = status;
-
-        DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "STATUS: '%s'  len: %u", conn->m_Buffer, conn->m_BufferSize);
-    }
-    return status;
-}
-
-// ***************************************************************************************************
-// LUA functions
-
-static WebsocketConnection* CreateConnection(const char* url)
-{
-    WebsocketConnection* conn = new WebsocketConnection;
-    conn->m_BufferCapacity = g_Websocket.m_BufferSize;
-    conn->m_Buffer = (char*)malloc(conn->m_BufferCapacity);
-    conn->m_Buffer[0] = 0;
-    conn->m_BufferSize = 0;
-    conn->m_ConnectTimeout = 0;
-
-    dmURI::Parse(url, &conn->m_Url);
-
-    if (strcmp(conn->m_Url.m_Scheme, "https") == 0)
-        strcpy(conn->m_Url.m_Scheme, "wss");
-
-    conn->m_SSL = strcmp(conn->m_Url.m_Scheme, "wss") == 0 ? 1 : 0;
-    conn->m_State = STATE_CREATE;
-
-    conn->m_Callback = 0;
-    conn->m_Connection = 0;
-    conn->m_Socket = 0;
-    conn->m_SSLSocket = 0;
-    conn->m_Status = RESULT_OK;
-    conn->m_HasHandshakeData = 0;
-    conn->m_HandshakeResponse = 0;
-    conn->m_ConnectionThread = 0;
-
-#if defined(HAVE_WSLAY)
-    conn->m_Ctx = 0;
-#endif
-#if defined(__EMSCRIPTEN__)
-    conn->m_WS = 0;
-#endif
-
-    return conn;
-}
-
-static void DestroyConnection(WebsocketConnection* conn)
-{
-#if defined(HAVE_WSLAY)
-    if (conn->m_Ctx)
-        WSL_Exit(conn->m_Ctx);
-#endif
-
-    free((void*)conn->m_CustomHeaders);
-    free((void*)conn->m_Protocol);
-
-    if (conn->m_Callback)
-        dmScript::DestroyCallback(conn->m_Callback);
-
-#if defined(__EMSCRIPTEN__)
-    if (conn->m_WS)
-    {
-        emscripten_websocket_delete(conn->m_WS);
-    }
-#else
-    if (conn->m_Connection)
-        dmConnectionPool::Close(g_Websocket.m_Pool, conn->m_Connection);
-#endif
-
-    if (conn->m_HandshakeResponse)
-        delete conn->m_HandshakeResponse;
-
-
-    free((void*)conn->m_Buffer);
-
-    if (conn->m_ConnectionThread)
-    {
-        dmThread::Join(conn->m_ConnectionThread);
-        conn->m_ConnectionThread = 0;
-    }
-
-    delete conn;
-    DebugLog(dmWebsocket::DEBUG_VERBOSE, "DestroyConnection: %p", conn);
-}
-
-
 static void CloseConnection(WebsocketConnection* conn)
 {
+    dmLogInfo("CloseConnection");
     // we want it to send this message in the polling
     if (conn->m_State == STATE_CONNECTED) {
 #if defined(HAVE_WSLAY)
@@ -266,6 +172,294 @@ static void CloseConnection(WebsocketConnection* conn)
     SetState(conn, STATE_DISCONNECTED);
 #endif
 }
+
+
+#define CLOSE_CONN(...) \
+    SetStatus(conn, RESULT_ERROR, __VA_ARGS__); \
+    CloseConnection(conn);
+
+
+
+Result SetStatus(WebsocketConnection* conn, Result status, const char* format, ...)
+{
+    if (conn->m_Status == RESULT_OK)
+    {
+        va_list lst;
+        va_start(lst, format);
+
+        conn->m_BufferSize = vsnprintf(conn->m_Buffer, conn->m_BufferCapacity, format, lst);
+        va_end(lst);
+        conn->m_Status = status;
+
+        DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "STATUS: '%s'  len: %u", conn->m_Buffer, conn->m_BufferSize);
+    }
+    return status;
+}
+
+
+// ***************************************************************************************************
+// LUA functions
+
+#if defined(__EMSCRIPTEN__)
+static void CreateConnectionEmscripten(WebsocketConnection* conn)
+{
+    char uri_buffer[dmURI::MAX_URI_LEN];
+    const char* uri;
+    bool no_path = conn->m_Url.m_Path[0] == '\0';
+    bool no_port = conn->m_Url.m_Port == -1;
+    if (no_path && no_port)
+    {
+        dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname);
+    }
+    else if (no_port)
+    {
+        dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Path);
+    }
+    else if (no_path)
+    {
+        dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s:%d", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Port);
+    }
+    else {
+        dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s:%d%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Port, conn->m_Url.m_Path);
+    }
+    uri = uri_buffer;
+
+    dmLogInfo("CreateConnectionEmscripten %s", uri);
+    EmscriptenWebSocketCreateAttributes ws_attrs = {
+        uri,
+        conn->m_Protocol,
+        EM_TRUE
+    };
+    EMSCRIPTEN_WEBSOCKET_T ws = emscripten_websocket_new(&ws_attrs);
+    if (ws < 0)
+    {
+        conn->m_WS = 0;
+        CLOSE_CONN("Failed to connect to '%s:%d': %d", conn->m_Url.m_Hostname, (int)conn->m_Url.m_Port, ws);
+        SetState(conn, STATE_DISCONNECTED);
+        return;
+    }
+    conn->m_WS = ws;
+
+    emscripten_websocket_set_onopen_callback(ws, conn, Emscripten_WebSocketOnOpen);
+    emscripten_websocket_set_onerror_callback(ws, conn, Emscripten_WebSocketOnError);
+    emscripten_websocket_set_onclose_callback(ws, conn, Emscripten_WebSocketOnClose);
+    emscripten_websocket_set_onmessage_callback(ws, conn, Emscripten_WebSocketOnMessage);
+    SetState(conn, STATE_CONNECTING);
+}
+#endif
+
+#if defined(HAVE_WSLAY)
+static void ConnectionWorker(void* _conn)
+{
+    dmLogInfo("ConnectionWorker");
+    WebsocketConnection* conn = (WebsocketConnection*)_conn;
+    dmSocket::Result sr;
+    dmConnectionPool::Result pool_result = dmConnectionPool::Dial(g_Websocket.m_Pool, conn->m_Url.m_Hostname, conn->m_Url.m_Port, conn->m_SSL, g_Websocket.m_Timeout, &conn->m_Connection, &sr);
+    if (dmConnectionPool::RESULT_OK != pool_result)
+    {
+        CLOSE_CONN("Failed to open connection: %s", dmSocket::ResultToString(sr));
+        return;
+    }
+
+    if (CheckConnectTimeout(conn))
+    {
+        dmLogInfo("ConnectionWorker timeout after Dial");
+        CLOSE_CONN("Connect sequence timed out");
+        return;
+    }
+
+    // send handshake
+    SetState(conn, STATE_HANDSHAKE_WRITE);
+    while (!CheckConnectTimeout(conn))
+    {
+        dmLogInfo("ConnectionWorker STATE_HANDSHAKE_WRITE");
+        conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
+        conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
+        Result result = SendClientHandshake(conn);
+        if (RESULT_WOULDBLOCK == result)
+        {
+            continue;
+        }
+        if (RESULT_OK == result)
+        {
+            dmLogInfo("ConnectionWorker STATE_HANDSHAKE_WRITE RESULT_OK");
+            break;
+        }
+        CLOSE_CONN("Failed sending handshake: %d", result);
+        return;
+    }
+
+    if (CheckConnectTimeout(conn))
+    {
+        dmLogInfo("ConnectionWorker timeout after STATE_HANDSHAKE_WRITE");
+        CLOSE_CONN("Connect sequence timed out");
+        return;
+    }
+
+    // read handshake
+    SetState(conn, STATE_HANDSHAKE_READ);
+    while (!CheckConnectTimeout(conn))
+    {
+        dmLogInfo("ConnectionWorker STATE_HANDSHAKE_READ");
+        Result result = ReceiveHeaders(conn);
+        if (RESULT_WOULDBLOCK == result)
+        {
+            dmLogInfo("ConnectionWorker STATE_HANDSHAKE_READ RESULT_WOULDBLOCK");
+            dmTime::Sleep(10*1000);
+            continue;
+        }
+
+        if (RESULT_OK != result)
+        {
+            CLOSE_CONN("Failed receiving handshake headers. %d", result);
+            return;
+        }
+
+        // Verifies headers, and also stages any initial sent data
+        result = VerifyHeaders(conn);
+        if (RESULT_OK != result)
+        {
+            CLOSE_CONN("Failed verifying handshake headers:\n%s\n\n", conn->m_Buffer);
+            return;
+        }
+
+        int r = WSL_Init(&conn->m_Ctx, g_Websocket.m_BufferSize, (void*)conn);
+        if (0 != r)
+        {
+            CLOSE_CONN("Failed initializing wslay: %s", WSL_ResultToString(r));
+            return;
+        }
+
+        dmSocket::SetNoDelay(conn->m_Socket, true);
+        // Don't go lower than 1000 since some platforms might not have that good precision
+        dmSocket::SetReceiveTimeout(conn->m_Socket, g_Websocket.m_ReceiveTimeout);
+        dmSocket::SetSendTimeout(conn->m_Socket, g_Websocket.m_SendTimeout);
+        if (conn->m_SSLSocket)
+        {
+            dmSSLSocket::SetReceiveTimeout(conn->m_SSLSocket, g_Websocket.m_ReceiveTimeout);
+            // dmSSLSocket::SetSendTimeout(conn->m_SSLSocket, g_Websocket.m_SendTimeout);
+        }
+        dmSocket::SetBlocking(conn->m_Socket, false);
+    }
+
+    if (CheckConnectTimeout(conn))
+    {
+        dmLogInfo("ConnectionWorker timeout after STATE_HANDSHAKE_READ");
+        CLOSE_CONN("Connect sequence timed out");
+        return;
+    }
+
+    // poll for messages
+    SetState(conn, STATE_CONNECTED);
+    while ((STATE_CONNECTED == conn->m_State) || (STATE_DISCONNECTING == conn->m_State))
+    {
+        dmLogInfo("ConnectionWorker STATE_CONNECTED || STATE_DISCONNECTING");
+        int r = WSL_Poll(conn->m_Ctx);
+        if (0 != r)
+        {
+            dmLogInfo("ConnectionWorker WSL_Poll %d", r);
+            CLOSE_CONN("Websocket closing for %s (%s)", conn->m_Url.m_Hostname, WSL_ResultToString(r));
+            return;
+        }
+    }
+
+    SetState(conn, STATE_DISCONNECTED);
+    dmLogInfo("ConnectionWorker DONE");
+}
+
+static void CreateConnectionWslay(WebsocketConnection* conn)
+{
+    conn->m_Ctx = 0;
+    conn->m_ConnectionThread = dmThread::New((dmThread::ThreadStart)ConnectionWorker, 0x80000, conn, "WSConnect");
+    SetState(conn, STATE_CONNECTING);
+}
+#endif
+
+static WebsocketConnection* CreateConnection(const char* url)
+{
+    WebsocketConnection* conn = new WebsocketConnection;
+    conn->m_BufferCapacity = g_Websocket.m_BufferSize;
+    conn->m_Buffer = (char*)malloc(conn->m_BufferCapacity);
+    conn->m_Buffer[0] = 0;
+    conn->m_BufferSize = 0;
+    conn->m_ConnectTimeout = 0;
+    conn->m_Mutex = dmMutex::New();
+
+    dmURI::Parse(url, &conn->m_Url);
+
+    if (strcmp(conn->m_Url.m_Scheme, "https") == 0)
+        strcpy(conn->m_Url.m_Scheme, "wss");
+
+    conn->m_SSL = strcmp(conn->m_Url.m_Scheme, "wss") == 0 ? 1 : 0;
+
+    conn->m_Callback = 0;
+    conn->m_Connection = 0;
+    conn->m_Socket = 0;
+    conn->m_SSLSocket = 0;
+    conn->m_Status = RESULT_OK;
+    conn->m_HasHandshakeData = 0;
+    conn->m_HandshakeResponse = 0;
+    conn->m_ConnectionThread = 0;
+
+#if defined(HAVE_WSLAY)
+    CreateConnectionWslay(conn);
+#endif
+
+#if defined(__EMSCRIPTEN__)
+    CreateConnectionEmscripten(conn);
+#endif
+
+    return conn;
+}
+
+static void DestroyConnection(WebsocketConnection* conn)
+{
+#if defined(HAVE_WSLAY)
+    if (conn->m_Ctx)
+    {
+        WSL_Exit(conn->m_Ctx);
+    }
+#endif
+
+    free((void*)conn->m_CustomHeaders);
+    free((void*)conn->m_Protocol);
+
+    if (conn->m_Callback)
+    {
+        dmScript::DestroyCallback(conn->m_Callback);
+    }
+
+#if defined(__EMSCRIPTEN__)
+    if (conn->m_WS)
+    {
+        emscripten_websocket_delete(conn->m_WS);
+    }
+#else
+    if (conn->m_Connection)
+    {
+        dmConnectionPool::Close(g_Websocket.m_Pool, conn->m_Connection);
+    }
+#endif
+
+    if (conn->m_HandshakeResponse)
+    {
+        delete conn->m_HandshakeResponse;
+    }
+
+    free((void*)conn->m_Buffer);
+
+    if (conn->m_ConnectionThread)
+    {
+        dmThread::Join(conn->m_ConnectionThread);
+        conn->m_ConnectionThread = 0;
+    }
+
+    dmMutex::Delete(conn->m_Mutex);
+
+    delete conn;
+    DebugLog(dmWebsocket::DEBUG_VERBOSE, "DestroyConnection: %p", conn);
+}
+
 
 static bool IsConnectionValid(WebsocketConnection* conn)
 {
@@ -320,6 +514,7 @@ static int LuaConnect(lua_State* L)
 
 static int LuaDisconnect(lua_State* L)
 {
+    dmLogInfo("LuaDisconnect");
     DM_LUA_STACK_CHECK(L, 0);
 
     if (!g_Websocket.m_Initialized)
@@ -533,7 +728,8 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
 {
     g_Websocket.m_BufferSize = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.buffer_size", 64 * 1024);
     g_Websocket.m_Timeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.socket_timeout", 500 * 1000);
-    g_Websocket.m_ReceiveTimeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.receive_timeout", 500 * 1000);
+    g_Websocket.m_ReceiveTimeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.receive_timeout", 1000);
+    g_Websocket.m_SendTimeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.send_timeout", 1000);
     g_Websocket.m_Connections.SetCapacity(4);
     g_Websocket.m_Pool = 0;
     g_Websocket.m_Initialized = 0;
@@ -543,19 +739,22 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
     dmConnectionPool::Result result = dmConnectionPool::New(&pool_params, &g_Websocket.m_Pool);
 
     const char* debug_level = dmConfigFile::GetString(params->m_ConfigFile, "websocket.debug", "disabled");
-    if (strcmp("state_changes", debug_level))
+    if (strcmp("state_changes", debug_level) == 0)
     {
+        dmLogInfo("foo");
         g_DebugWebSocket = dmWebsocket::DEBUG_STATE_CHANGES;
     }
-    else if (strcmp("verbose", debug_level))
+    else if (strcmp("verbose", debug_level) == 0)
     {
+        dmLogInfo("bar");
         g_DebugWebSocket = dmWebsocket::DEBUG_VERBOSE;
     }
     else
     {
+        dmLogInfo("boo");
         g_DebugWebSocket = dmWebsocket::DEBUG_DISABLED;
     }
-    dmLogInfo("dmWebSocket::g_DebugWebSocket == %d", g_DebugWebSocket);
+    dmLogInfo("dmWebSocket::g_DebugWebSocket == %d (%s)", g_DebugWebSocket, debug_level);
 
     if (dmConnectionPool::RESULT_OK != result)
     {
@@ -595,10 +794,17 @@ static dmExtension::Result Finalize(dmExtension::Params* params)
     return dmExtension::RESULT_OK;
 }
 
+// called from wslay_callbacks and empscripten_callbacks
 Result PushMessage(WebsocketConnection* conn, MessageType type, int length, const uint8_t* buffer, uint16_t code)
 {
+    DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
+    // we should only push messages when in the connected or disconnecting state
+    assert((STATE_CONNECTED == conn->m_State) || (STATE_DISCONNECTING == conn->m_State));
+
     if (conn->m_Messages.Full())
+    {
         conn->m_Messages.OffsetCapacity(4);
+    }
 
     Message msg;
     msg.m_Type = (uint32_t)type;
@@ -623,43 +829,35 @@ Result PushMessage(WebsocketConnection* conn, MessageType type, int length, cons
     return dmWebsocket::RESULT_OK;
 }
 
-// has the connect procedure taken too long?
-static bool CheckConnectTimeout(WebsocketConnection* conn)
-{
-    uint64_t t = dmTime::GetTime();
-    return t >= conn->m_ConnectTimeout;
-}
-
-static void ConnectionWorker(void* _conn)
-{
-    WebsocketConnection* conn = (WebsocketConnection*)_conn;
-    dmSocket::Result sr;
-    dmConnectionPool::Result pool_result = dmConnectionPool::Dial(g_Websocket.m_Pool, conn->m_Url.m_Hostname, conn->m_Url.m_Port, conn->m_SSL, g_Websocket.m_Timeout, &conn->m_Connection, &sr);
-    if (dmConnectionPool::RESULT_OK != pool_result)
-    {
-        CLOSE_CONN("Failed to open connection: %s", dmSocket::ResultToString(sr));
-        return;
-    }
-    SetState(conn, STATE_HANDSHAKE_WRITE);
-}
 
 static dmExtension::Result OnUpdate(dmExtension::Params* params)
 {
+    dmLogInfo("OnUpdate");
     uint32_t size = g_Websocket.m_Connections.Size();
 
     for (uint32_t i = 0; i < size; ++i)
     {
+        dmLogInfo("OnUpdate connection %d", i);
         WebsocketConnection* conn = g_Websocket.m_Connections[i];
+
+        bool state_transition = conn->m_State != conn->m_PreviousState;
+        conn->m_PreviousState = conn->m_State;
 
         if (STATE_DISCONNECTED == conn->m_State)
         {
-            if (RESULT_OK != conn->m_Status)
+            dmLogInfo("OnUpdate DISCONNECTED");
             {
-                HandleCallback(conn, EVENT_ERROR, 0, conn->m_BufferSize);
-                conn->m_BufferSize = 0;
+                DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
+                if (RESULT_OK != conn->m_Status)
+                {
+                    HandleCallback(conn, EVENT_ERROR, 0, conn->m_BufferSize);
+                    HandleCallback(conn, EVENT_DISCONNECTED, 0, 0);
+                }
+                else
+                {
+                    HandleCallback(conn, EVENT_DISCONNECTED, 0, conn->m_BufferSize);
+                }
             }
-
-            HandleCallback(conn, EVENT_DISCONNECTED, 0, conn->m_BufferSize);
 
             g_Websocket.m_Connections.EraseSwap(i);
             --i;
@@ -668,15 +866,14 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
         }
         else if ((STATE_CONNECTED == conn->m_State) || (STATE_DISCONNECTING == conn->m_State))
         {
-#if defined(HAVE_WSLAY)
-            int r = WSL_Poll(conn->m_Ctx);
-            if (0 != r)
+            DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
+            if (state_transition && (STATE_CONNECTED == conn->m_State))
             {
-                CLOSE_CONN("Websocket closing for %s (%s)", conn->m_Url.m_Hostname, WSL_ResultToString(r));
-                continue;
+                HandleCallback(conn, EVENT_CONNECTED, 0, 0);
             }
-#endif
 
+            dmLogInfo("OnUpdate CONNECTED or DISCONNECTING");
+            DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
             uint32_t offset = 0;
             for (uint32_t i = 0; i < conn->m_Messages.Size(); ++i)
             {
@@ -692,141 +889,25 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
                     break;
                 }
 
+                dmLogInfo("OnUpdate CONNECTED HandleCallback");
                 HandleCallback(conn, EVENT_MESSAGE, offset, msg.m_Length);
                 offset += msg.m_Length;
             }
             conn->m_Messages.SetSize(0);
             conn->m_BufferSize = 0;
+            dmLogInfo("OnUpdate CONNECTED done");
         }
         else if (STATE_HANDSHAKE_READ == conn->m_State)
         {
-            if (CheckConnectTimeout(conn))
-            {
-                CLOSE_CONN("Connect sequence timed out");
-                continue;
-            }
-
-            Result result = ReceiveHeaders(conn);
-            if (RESULT_WOULDBLOCK == result)
-            {
-                continue;
-            }
-
-            if (RESULT_OK != result)
-            {
-                CLOSE_CONN("Failed receiving handshake headers. %d", result);
-                continue;
-            }
-
-            // Verifies headers, and also stages any initial sent data
-            result = VerifyHeaders(conn);
-            if (RESULT_OK != result)
-            {
-                CLOSE_CONN("Failed verifying handshake headers:\n%s\n\n", conn->m_Buffer);
-                continue;
-            }
-
-#if defined(HAVE_WSLAY)
-            int r = WSL_Init(&conn->m_Ctx, g_Websocket.m_BufferSize, (void*)conn);
-            if (0 != r)
-            {
-                CLOSE_CONN("Failed initializing wslay: %s", WSL_ResultToString(r));
-                continue;
-            }
-
-            dmSocket::SetNoDelay(conn->m_Socket, true);
-            // Don't go lower than 1000 since some platforms might not have that good precision
-            dmSocket::SetReceiveTimeout(conn->m_Socket, g_Websocket.m_ReceiveTimeout);
-            if (conn->m_SSLSocket)
-                dmSSLSocket::SetReceiveTimeout(conn->m_SSLSocket, g_Websocket.m_ReceiveTimeout);
-
-            dmSocket::SetBlocking(conn->m_Socket, false);
-#endif
-            SetState(conn, STATE_CONNECTED);
-            HandleCallback(conn, EVENT_CONNECTED, 0, 0);
+            dmLogInfo("OnUpdate STATE_HANDSHAKE_READ");
         }
         else if (STATE_HANDSHAKE_WRITE == conn->m_State)
         {
-            if (CheckConnectTimeout(conn))
-            {
-                CLOSE_CONN("Connect sequence timed out");
-                continue;
-            }
-
-            if (conn->m_ConnectionThread)
-            {
-                dmThread::Join(conn->m_ConnectionThread);
-                conn->m_ConnectionThread = 0;
-            }
-            conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
-            conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
-            Result result = SendClientHandshake(conn);
-            if (RESULT_WOULDBLOCK == result)
-            {
-                continue;
-            }
-            if (RESULT_OK != result)
-            {
-                CLOSE_CONN("Failed sending handshake: %d", result);
-                continue;
-            }
-
-            SetState(conn, STATE_HANDSHAKE_READ);
-        }
-        else if (STATE_CREATE == conn->m_State)
-        {
-            if (CheckConnectTimeout(conn))
-            {
-                CLOSE_CONN("Connect sequence timed out");
-                continue;
-            }
-
-#if defined(__EMSCRIPTEN__)
-            char uri_buffer[dmURI::MAX_URI_LEN];
-            const char* uri;
-            bool no_path = conn->m_Url.m_Path[0] == '\0';
-            bool no_port = conn->m_Url.m_Port == -1;
-            if (no_path && no_port)
-            {
-                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname);
-            }
-            else if (no_port)
-            {
-                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Path);
-            }
-            else if (no_path)
-            {
-                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s:%d", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Port);
-            }
-            else {
-                dmSnPrintf(uri_buffer, sizeof(uri_buffer), "%s://%s:%d%s", conn->m_Url.m_Scheme, conn->m_Url.m_Hostname, conn->m_Url.m_Port, conn->m_Url.m_Path);
-            }
-            uri = uri_buffer;
-
-            EmscriptenWebSocketCreateAttributes ws_attrs = {
-                uri,
-                conn->m_Protocol,
-                EM_TRUE
-            };
-            EMSCRIPTEN_WEBSOCKET_T ws = emscripten_websocket_new(&ws_attrs);
-            if (ws < 0)
-            {
-                CLOSE_CONN("Failed to connect to '%s:%d': %d", conn->m_Url.m_Hostname, (int)conn->m_Url.m_Port, ws);
-                continue;
-            }
-            conn->m_WS = ws;
-
-            emscripten_websocket_set_onopen_callback(ws, conn, Emscripten_WebSocketOnOpen);
-            emscripten_websocket_set_onerror_callback(ws, conn, Emscripten_WebSocketOnError);
-            emscripten_websocket_set_onclose_callback(ws, conn, Emscripten_WebSocketOnClose);
-            emscripten_websocket_set_onmessage_callback(ws, conn, Emscripten_WebSocketOnMessage);
-#else
-            conn->m_ConnectionThread = dmThread::New((dmThread::ThreadStart)ConnectionWorker, 0x80000, conn, "WSConnect");
-#endif
-            SetState(conn, STATE_CONNECTING);
+            dmLogInfo("OnUpdate STATE_HANDSHAKE_WRITE");
         }
         else if (STATE_CONNECTING == conn->m_State)
         {
+            dmLogInfo("OnUpdate STATE_CONNECTING");
 #if defined(__EMSCRIPTEN__)
             if (CheckConnectTimeout(conn))
             {

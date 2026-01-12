@@ -57,6 +57,7 @@ int WSL_Close(wslay_event_context_ptr ctx)
 
 int WSL_Poll(wslay_event_context_ptr ctx)
 {
+    dmLogInfo("WSL_Poll");
     int r = 0;
     if ((r = wslay_event_recv(ctx)) != 0 || (r = wslay_event_send(ctx)) != 0) {
         dmLogError("Websocket poll error: %s", WSL_ResultToString(r));
@@ -66,7 +67,9 @@ int WSL_Poll(wslay_event_context_ptr ctx)
 
 ssize_t WSL_RecvCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, int flags, void *user_data)
 {
+    dmLogInfo("WSL_RecvCallback");
     WebsocketConnection* conn = (WebsocketConnection*)user_data;
+    DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
 
     int r = -1; // received bytes if >=0, error if < 0
 
@@ -79,7 +82,9 @@ ssize_t WSL_RecvCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, 
         return r;
     }
 
+    dmLogInfo("WSL_RecvCallback calling Receive");
     dmSocket::Result socket_result = Receive(conn, buf, len, &r);
+    dmLogInfo("WSL_RecvCallback calling Receive result %d", socket_result);
 
     if (dmSocket::RESULT_OK == socket_result && r == 0)
         socket_result = dmSocket::RESULT_CONNABORTED;
@@ -93,15 +98,20 @@ ssize_t WSL_RecvCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, 
             wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
         return -1;
     }
+    dmLogInfo("WSL_RecvCallback done");
     return r;
 }
 
 ssize_t WSL_SendCallback(wslay_event_context_ptr ctx, const uint8_t *data, size_t len, int flags, void *user_data)
 {
+    dmLogInfo("WSL_SendCallback");
     WebsocketConnection* conn = (WebsocketConnection*)user_data;
+    DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
 
     int sent_bytes = 0;
+    dmLogInfo("WSL_SendCallback calling Send");
     dmSocket::Result socket_result = Send(conn, (const char*)data, len, &sent_bytes);
+    dmLogInfo("WSL_SendCallback calling Send result %d", socket_result);
 
     if (socket_result != dmSocket::RESULT_OK)
     {
@@ -111,6 +121,7 @@ ssize_t WSL_SendCallback(wslay_event_context_ptr ctx, const uint8_t *data, size_
             wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
         return -1;
     }
+    dmLogInfo("WSL_SendCallback done");
     return (ssize_t)sent_bytes;
 }
 
@@ -118,10 +129,13 @@ ssize_t WSL_SendCallback(wslay_event_context_ptr ctx, const uint8_t *data, size_
 void WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event_on_msg_recv_arg *arg, void *user_data)
 {
     WebsocketConnection* conn = (WebsocketConnection*)user_data;
+    DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
+
     if (arg->opcode == WSLAY_TEXT_FRAME || arg->opcode == WSLAY_BINARY_FRAME)
     {
         PushMessage(conn, MESSAGE_TYPE_NORMAL, arg->msg_length, arg->msg, 0);
-    } else if (arg->opcode == WSLAY_CONNECTION_CLOSE)
+    }
+    else if (arg->opcode == WSLAY_CONNECTION_CLOSE)
     {
         // The first two bytes is the close code
         const uint8_t* reason = (const uint8_t*)"";
@@ -143,7 +157,6 @@ void WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event
         }
 
         DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "%s", buffer);
-
     }
 }
 
