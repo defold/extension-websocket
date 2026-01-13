@@ -9,6 +9,7 @@
 #include <dmsdk/dlib/connection_pool.h>
 #include <dmsdk/dlib/thread.h>
 #include <dmsdk/dlib/sslsocket.h>
+#include <dmsdk/dlib/math.h>
 #include <ctype.h> // isprint et al
 
 #if defined(__EMSCRIPTEN__)
@@ -30,7 +31,6 @@ struct WebsocketContext
     uint64_t                        m_BufferSize;
     int                             m_Timeout;
     int                             m_ReceiveTimeout;
-    int                             m_SendTimeout;
     dmArray<WebsocketConnection*>   m_Connections;
     dmConnectionPool::HPool         m_Pool;
     uint32_t                        m_Initialized:1;
@@ -152,7 +152,6 @@ void SetState(WebsocketConnection* conn, State state)
 
 static void CloseConnection(WebsocketConnection* conn)
 {
-    dmLogInfo("CloseConnection");
     // we want it to send this message in the polling
     if (conn->m_State == STATE_CONNECTED) {
 #if defined(HAVE_WSLAY)
@@ -250,8 +249,6 @@ static void CreateConnectionEmscripten(WebsocketConnection* conn)
 #if defined(HAVE_WSLAY)
 static void ConnectionWorker(void* _conn)
 {
-    dmLogInfo("ConnectionWorker");
-
     WebsocketConnection* conn = (WebsocketConnection*)_conn;
 
     // create and connect socket
@@ -265,23 +262,19 @@ static void ConnectionWorker(void* _conn)
     }
     if (CheckConnectTimeout(conn))
     {
-        dmLogInfo("ConnectionWorker timeout after Dial");
         CLOSE_CONN("Connect sequence timed out");
         return;
     }
-    conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
-    conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
     
     // socket configuration
+    conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
+    conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
     dmSocket::SetNoDelay(conn->m_Socket, true);
     dmSocket::SetBlocking(conn->m_Socket, false);
-    // Don't go lower than 1000 since some platforms might not have that good precision
     dmSocket::SetReceiveTimeout(conn->m_Socket, g_Websocket.m_ReceiveTimeout);
-    dmSocket::SetSendTimeout(conn->m_Socket, g_Websocket.m_SendTimeout);
     if (conn->m_SSLSocket)
     {
         dmSSLSocket::SetReceiveTimeout(conn->m_SSLSocket, g_Websocket.m_ReceiveTimeout);
-        // dmSSLSocket::SetSendTimeout(conn->m_SSLSocket, g_Websocket.m_SendTimeout);
     }
 
     // send handshake
@@ -348,15 +341,11 @@ static void ConnectionWorker(void* _conn)
     SetState(conn, STATE_CONNECTED);
     while ((STATE_CONNECTED == conn->m_State) || (STATE_DISCONNECTING == conn->m_State))
     {
+        int r = WSL_Poll(conn->m_Ctx);
+        if (0 != r)
         {
-            DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
-            dmLogInfo("WSL_Poll");
-            int r = WSL_Poll(conn->m_Ctx);
-            if (0 != r)
-            {
-                CLOSE_CONN("Websocket closing for %s (%s)", conn->m_Url.m_Hostname, WSL_ResultToString(r));
-                return;
-            }
+            CLOSE_CONN("Websocket closing for %s (%s)", conn->m_Url.m_Hostname, WSL_ResultToString(r));
+            return;
         }
         dmTime::Sleep(10*1000);
     }
@@ -515,7 +504,6 @@ static int LuaConnect(lua_State* L)
 
 static int LuaDisconnect(lua_State* L)
 {
-    dmLogInfo("LuaDisconnect");
     DM_LUA_STACK_CHECK(L, 0);
 
     if (!g_Websocket.m_Initialized)
@@ -730,11 +718,14 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
 {
     g_Websocket.m_BufferSize = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.buffer_size", 64 * 1024);
     g_Websocket.m_Timeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.socket_timeout", 500 * 1000);
-    g_Websocket.m_ReceiveTimeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.receive_timeout", 1000);
-    g_Websocket.m_SendTimeout = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.send_timeout", 1000);
     g_Websocket.m_Connections.SetCapacity(4);
     g_Websocket.m_Pool = 0;
     g_Websocket.m_Initialized = 0;
+
+    // do not go below 1000 microseconds since the value is divided by 1000
+    // in dmSocket
+    // this will result in a timeout of 0 which blocks indefinitely
+    g_Websocket.m_ReceiveTimeout = dmMath::Max(1000, dmConfigFile::GetInt(params->m_ConfigFile, "websocket.receive_timeout", 1000));
 
     dmConnectionPool::Params pool_params;
     pool_params.m_MaxConnections = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.max_connections", 2);
@@ -743,20 +734,16 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
     const char* debug_level = dmConfigFile::GetString(params->m_ConfigFile, "websocket.debug", "disabled");
     if (strcmp("state_changes", debug_level) == 0)
     {
-        dmLogInfo("foo");
         g_DebugWebSocket = dmWebsocket::DEBUG_STATE_CHANGES;
     }
     else if (strcmp("verbose", debug_level) == 0)
     {
-        dmLogInfo("bar");
         g_DebugWebSocket = dmWebsocket::DEBUG_VERBOSE;
     }
     else
     {
-        dmLogInfo("boo");
         g_DebugWebSocket = dmWebsocket::DEBUG_DISABLED;
     }
-    dmLogInfo("dmWebSocket::g_DebugWebSocket == %d (%s)", g_DebugWebSocket, debug_level);
 
     if (dmConnectionPool::RESULT_OK != result)
     {
