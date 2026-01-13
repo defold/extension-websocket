@@ -30,7 +30,6 @@ struct WebsocketContext
 {
     uint64_t                        m_BufferSize;
     int                             m_Timeout;
-    int                             m_ReceiveTimeout;
     dmArray<WebsocketConnection*>   m_Connections;
     dmConnectionPool::HPool         m_Pool;
     uint32_t                        m_Initialized:1;
@@ -271,10 +270,13 @@ static void ConnectionWorker(void* _conn)
     conn->m_SSLSocket = dmConnectionPool::GetSSLSocket(g_Websocket.m_Pool, conn->m_Connection);
     dmSocket::SetNoDelay(conn->m_Socket, true);
     dmSocket::SetBlocking(conn->m_Socket, false);
-    dmSocket::SetReceiveTimeout(conn->m_Socket, g_Websocket.m_ReceiveTimeout);
+    // Don't go lower than 1000 microseconds since this value will be divided by 1000
+    // in the socket code and we'll then get a timeout of 0 which means the socket
+    // will block indefinitely
+    dmSocket::SetReceiveTimeout(conn->m_Socket, 1000);
     if (conn->m_SSLSocket)
     {
-        dmSSLSocket::SetReceiveTimeout(conn->m_SSLSocket, g_Websocket.m_ReceiveTimeout);
+        dmSSLSocket::SetReceiveTimeout(conn->m_SSLSocket, 1000);
     }
 
     // send handshake
@@ -713,11 +715,6 @@ static dmExtension::Result AppInitialize(dmExtension::AppParams* params)
     g_Websocket.m_Connections.SetCapacity(4);
     g_Websocket.m_Pool = 0;
     g_Websocket.m_Initialized = 0;
-
-    // do not go below 1000 microseconds since the value is divided by 1000
-    // in dmSocket
-    // this will result in a timeout of 0 which blocks indefinitely
-    g_Websocket.m_ReceiveTimeout = dmMath::Max(1000, dmConfigFile::GetInt(params->m_ConfigFile, "websocket.receive_timeout", 1000));
 
     dmConnectionPool::Params pool_params;
     pool_params.m_MaxConnections = dmConfigFile::GetInt(params->m_ConfigFile, "websocket.max_connections", 2);
