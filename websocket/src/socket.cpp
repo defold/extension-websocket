@@ -49,19 +49,14 @@ dmSocket::Result Send(WebsocketConnection* conn, const char* buffer, int length,
 
 dmSocket::Result Receive(WebsocketConnection* conn, void* buffer, int length, int* received_bytes)
 {
-    dmLogInfo("Receive");
     dmSocket::Result sr;
     if (conn->m_SSLSocket)
     {
-        dmLogInfo("Receive dmSSLSocket");
         sr = dmSSLSocket::Receive(conn->m_SSLSocket, buffer, length, received_bytes);
-        dmLogInfo("Receive dmSSLSocket r = %d", sr);
     }
     else
     {
-        dmLogInfo("Receive dmSocket");
         sr = dmSocket::Receive(conn->m_Socket, buffer, length, received_bytes);
-        dmLogInfo("Receive dmSocket r = %d", sr);
     }
 
     int num_bytes = received_bytes ? (uint32_t)*received_bytes : 0;

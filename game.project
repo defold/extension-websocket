@@ -17,6 +17,6 @@ include_dirs = websocket
 
 [websocket]
 debug = verbose
-receive_timeout = 500
+receive_timeout = 1000
 send_timeout = 1000
 

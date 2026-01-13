@@ -26,7 +26,6 @@ static void CreateKey(uint8_t* key, size_t len)
 
 static Result SendClientHandshakeHeaders(WebsocketConnection* conn)
 {
-    dmLogInfo("SendClientHandshakeHeaders");
     CreateKey(conn->m_Key, sizeof(conn->m_Key));
 
     char encoded_key[64] = {0};
@@ -93,7 +92,6 @@ bail:
 
 Result SendClientHandshake(WebsocketConnection* conn)
 {
-    dmLogInfo("SendClientHandshake");
     dmSocket::Result sr = WaitForSocket(conn, dmSocket::SELECTOR_KIND_WRITE, SOCKET_WAIT_TIMEOUT);
     if (dmSocket::RESULT_WOULDBLOCK == sr)
     {
@@ -110,15 +108,11 @@ Result SendClientHandshake(WebsocketConnection* conn)
 
 Result ReceiveHeaders(WebsocketConnection* conn)
 {
-    dmLogInfo("ReceiveHeaders");
     dmSocket::Result sr = WaitForSocket(conn, dmSocket::SELECTOR_KIND_READ, SOCKET_WAIT_TIMEOUT);
-    dmLogInfo("ReceiveHeaders WaitForSocket sr: %d", sr);
     if (dmSocket::RESULT_OK != sr)
     {
-        dmLogInfo("ReceiveHeaders dmSocket::RESULT_OK != sr");
         if (dmSocket::RESULT_WOULDBLOCK == sr)
         {
-            dmLogInfo("ReceiveHeaders dmSocket::RESULT_WOULDBLOCK == sr");
             DebugLog(dmWebsocket::DEBUG_VERBOSE, "Waiting for socket to be available for reading");
             return RESULT_WOULDBLOCK;
         }
@@ -135,17 +129,14 @@ Result ReceiveHeaders(WebsocketConnection* conn)
 
     int recv_bytes = 0;
     sr = Receive(conn, conn->m_Buffer + conn->m_BufferSize, max_to_recv, &recv_bytes);
-    dmLogInfo("ReceiveHeaders Receive %d %d", sr, recv_bytes);
 
     if( sr == dmSocket::RESULT_WOULDBLOCK )
     {
-        dmLogInfo("ReceiveHeaders RESULT_WOULDBLOCK");
         sr = dmSocket::RESULT_TRY_AGAIN;
     }
 
     if (sr == dmSocket::RESULT_TRY_AGAIN)
     {
-        dmLogInfo("ReceiveHeaders RESULT_TRY_AGAIN");
         return RESULT_WOULDBLOCK;
     }
 
