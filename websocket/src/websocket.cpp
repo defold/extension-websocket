@@ -819,9 +819,6 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
     {
         WebsocketConnection* conn = g_Websocket.m_Connections[i];
 
-        bool state_transition = conn->m_State != conn->m_PreviousState;
-        conn->m_PreviousState = conn->m_State;
-
         if (STATE_DISCONNECTED == conn->m_State)
         {
             {
@@ -845,7 +842,8 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
         else if ((STATE_CONNECTED == conn->m_State) || (STATE_DISCONNECTING == conn->m_State))
         {
             DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
-            if (state_transition && (STATE_CONNECTED == conn->m_State))
+            // transitioned to the connected state?
+            if ((conn->m_State != conn->m_PreviousState) && (STATE_CONNECTED == conn->m_State))
             {
                 HandleCallback(conn, EVENT_CONNECTED, 0, 0);
             }
@@ -881,6 +879,8 @@ static dmExtension::Result OnUpdate(dmExtension::Params* params)
             }
 #endif
         }
+
+        conn->m_PreviousState = conn->m_State;
     }
 
     return dmExtension::RESULT_OK;
