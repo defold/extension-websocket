@@ -1,5 +1,4 @@
 local URL = "echo.websocket.org"
---URL = "defold.com"
 
 local function click_button(node, action)
 	return gui.is_enabled(node) and action.pressed and gui.pick_node(node, action.x, action.y)
