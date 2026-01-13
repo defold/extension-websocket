@@ -780,9 +780,7 @@ Result PushMessage(WebsocketConnection* conn, MessageType type, int length, cons
     assert((STATE_CONNECTED == conn->m_State) || (STATE_DISCONNECTING == conn->m_State));
 
     if (conn->m_Messages.Full())
-    {
         conn->m_Messages.OffsetCapacity(4);
-    }
 
     Message msg;
     msg.m_Type = (uint32_t)type;
