@@ -136,9 +136,7 @@ Result ReceiveHeaders(WebsocketConnection* conn)
     }
 
     if (sr == dmSocket::RESULT_TRY_AGAIN)
-    {
         return RESULT_WOULDBLOCK;
-    }
 
     if (sr != dmSocket::RESULT_OK)
     {
@@ -152,7 +150,12 @@ Result ReceiveHeaders(WebsocketConnection* conn)
 
     // Check if the end of the response has arrived
     const char* endtag = strstr(conn->m_Buffer, "\r\n\r\n");
-    return (endtag != 0) ? RESULT_OK : RESULT_WOULDBLOCK;
+    if (endtag != 0)
+    {
+        return RESULT_OK;
+    }
+
+    return RESULT_WOULDBLOCK;
 }
 
 static void HandleVersion(void* user_data, int major, int minor, int status, const char* status_str)
