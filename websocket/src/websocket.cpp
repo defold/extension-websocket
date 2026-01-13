@@ -405,9 +405,7 @@ static void DestroyConnection(WebsocketConnection* conn)
 
 #if defined(HAVE_WSLAY)
         if (conn->m_Ctx)
-        {
             WSL_Exit(conn->m_Ctx);
-        }
 #endif
 
         free((void*)conn->m_CustomHeaders);
