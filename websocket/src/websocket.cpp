@@ -149,10 +149,24 @@ void SetState(WebsocketConnection* conn, State state)
     }
 }
 
+static bool IsConnectionValid(WebsocketConnection* conn)
+{
+    if (conn)
+    {
+        for (int i = 0; i < g_Websocket.m_Connections.Size(); ++i )
+        {
+            if (g_Websocket.m_Connections[i] == conn)
+                return true;
+        }
+    }
+    return false;
+}
+
 static void CloseConnection(WebsocketConnection* conn)
 {
     // we want it to send this message in the polling
-    if (conn->m_State == STATE_CONNECTED) {
+    if (conn->m_State == STATE_CONNECTED)
+    {
 #if defined(HAVE_WSLAY)
         WSL_Close(conn->m_Ctx);
 #else
@@ -264,6 +278,10 @@ static void ConnectionWorker(void* _conn)
         CLOSE_CONN("Connect sequence timed out");
         return;
     }
+    if (!IsConnectionValid(conn))
+    {
+        return;
+    }
     
     // socket configuration
     conn->m_Socket = dmConnectionPool::GetSocket(g_Websocket.m_Pool, conn->m_Connection);
@@ -298,6 +316,10 @@ static void ConnectionWorker(void* _conn)
             CLOSE_CONN("Connect sequence timed out");
             return;
         }
+        if (!IsConnectionValid(conn))
+        {
+            return;
+        }
         dmTime::Sleep(10*1000);
     }
 
@@ -318,6 +340,10 @@ static void ConnectionWorker(void* _conn)
         if (CheckConnectTimeout(conn))
         {
             CLOSE_CONN("Connect sequence timed out");
+            return;
+        }
+        if (!IsConnectionValid(conn))
+        {
             return;
         }
         dmTime::Sleep(10*1000);
@@ -347,6 +373,10 @@ static void ConnectionWorker(void* _conn)
         if (0 != r)
         {
             CLOSE_CONN("Websocket closing for %s (%s)", conn->m_Url.m_Hostname, WSL_ResultToString(r));
+            return;
+        }
+        if (!IsConnectionValid(conn))
+        {
             return;
         }
         dmTime::Sleep(10*1000);
@@ -444,19 +474,6 @@ static void DestroyConnection(WebsocketConnection* conn)
     DebugLog(dmWebsocket::DEBUG_VERBOSE, "DestroyConnection: %p", conn);
 }
 
-
-static bool IsConnectionValid(WebsocketConnection* conn)
-{
-    if (conn)
-    {
-        for (int i = 0; i < g_Websocket.m_Connections.Size(); ++i )
-        {
-            if (g_Websocket.m_Connections[i] == conn)
-                return true;
-        }
-    }
-    return false;
-}
 
 /*#
 *

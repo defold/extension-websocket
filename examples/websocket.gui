@@ -154,6 +154,30 @@ nodes {
   }
   inherit_alpha: true
 }
+nodes {
+  position {
+    x: 320.0
+    y: 69.0
+  }
+  type: TYPE_TEMPLATE
+  id: "reboot"
+  inherit_alpha: true
+  template: "/examples/assets/button.gui"
+}
+nodes {
+  type: TYPE_BOX
+  id: "reboot/button"
+  parent: "reboot"
+  template_node_child: true
+}
+nodes {
+  type: TYPE_TEXT
+  text: "REBOOT"
+  id: "reboot/label"
+  parent: "reboot/button"
+  overridden_fields: 8
+  template_node_child: true
+}
 layers {
   name: "below"
 }
