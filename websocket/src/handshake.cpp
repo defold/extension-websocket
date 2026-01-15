@@ -3,6 +3,8 @@
 #include <dmsdk/dlib/http_client.h>
 #include <ctype.h> // tolower
 
+#if !defined(__EMSCRIPTEN__)
+
 namespace dmWebsocket
 {
 
@@ -272,3 +274,5 @@ Result VerifyHeaders(WebsocketConnection* conn)
 }
 
 } // namespace
+
+#endif

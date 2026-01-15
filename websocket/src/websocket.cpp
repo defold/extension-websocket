@@ -135,7 +135,7 @@ void DebugPrint(int level, const char* msg, const void* _bytes, uint32_t num_byt
 // has the connect procedure taken too long?
 static bool CheckConnectTimeout(WebsocketConnection* conn)
 {
-    uint64_t t = dmTime::GetTime();
+    uint64_t t = dmTime::GetMonotonicTime();
     return t >= conn->m_ConnectTimeout;
 }
 
