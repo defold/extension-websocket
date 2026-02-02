@@ -67,6 +67,7 @@ int WSL_Poll(wslay_event_context_ptr ctx)
 ssize_t WSL_RecvCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, int flags, void *user_data)
 {
     WebsocketConnection* conn = (WebsocketConnection*)user_data;
+    DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
 
     int r = -1; // received bytes if >=0, error if < 0
 
@@ -99,6 +100,7 @@ ssize_t WSL_RecvCallback(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, 
 ssize_t WSL_SendCallback(wslay_event_context_ptr ctx, const uint8_t *data, size_t len, int flags, void *user_data)
 {
     WebsocketConnection* conn = (WebsocketConnection*)user_data;
+    DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
 
     int sent_bytes = 0;
     dmSocket::Result socket_result = Send(conn, (const char*)data, len, &sent_bytes);
@@ -118,10 +120,13 @@ ssize_t WSL_SendCallback(wslay_event_context_ptr ctx, const uint8_t *data, size_
 void WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event_on_msg_recv_arg *arg, void *user_data)
 {
     WebsocketConnection* conn = (WebsocketConnection*)user_data;
+    DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
+
     if (arg->opcode == WSLAY_TEXT_FRAME || arg->opcode == WSLAY_BINARY_FRAME)
     {
         PushMessage(conn, MESSAGE_TYPE_NORMAL, arg->msg_length, arg->msg, 0);
-    } else if (arg->opcode == WSLAY_CONNECTION_CLOSE)
+    }
+    else if (arg->opcode == WSLAY_CONNECTION_CLOSE)
     {
         // The first two bytes is the close code
         const uint8_t* reason = (const uint8_t*)"";
@@ -142,8 +147,7 @@ void WSL_OnMsgRecvCallback(wslay_event_context_ptr ctx, const struct wslay_event
             wslay_event_queue_close(ctx, arg->status_code, (const uint8_t*)buffer, len);
         }
 
-        DebugLog(1, "%s", buffer);
-
+        DebugLog(dmWebsocket::DEBUG_STATE_CHANGES, "%s", buffer);
     }
 }
 

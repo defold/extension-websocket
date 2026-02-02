@@ -17,18 +17,11 @@ https://defold.com/extension-websocket/websocket_api/
 
 ## Debugging
 
-In order to make it easier to debug this extension, we provide a `game.project` setting `websocket.debug` (edit `game.project` as text and add):
+In order to make it easier to debug this extension, we provide a `game.project` setting `websocket.debug`. Set it to:
 
-```
-[websocket]
-debug = level
-```
-
-Set it to:
-
-* `0` to disable debugging (i.e. no debug output).
-* `1` to display state changes.
-* `2` to display the messages sent and received.
+* `disabled` to disable debugging (i.e. no debug output).
+* `state` to display state changes.
+* `verbose` to display the messages, state changes and more.
 
 ## External resources
 

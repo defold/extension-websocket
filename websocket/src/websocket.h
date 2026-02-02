@@ -37,9 +37,15 @@ namespace dmWebsocket
     // Maximum time to wait for a socket
     static const int SOCKET_WAIT_TIMEOUT = 4*1000;
 
+    enum DebugLevel
+    {
+        DEBUG_DISABLED,
+        DEBUG_STATE_CHANGES,
+        DEBUG_VERBOSE
+    };
+
     enum State
     {
-        STATE_CREATE,
         STATE_CONNECTING,
         STATE_HANDSHAKE_WRITE,
         STATE_HANDSHAKE_READ,
@@ -121,11 +127,13 @@ namespace dmWebsocket
         dmSSLSocket::Socket             m_SSLSocket;
         dmThread::Thread                m_ConnectionThread;
         dmArray<Message>                m_Messages; // lengths of the messages in the data buffer
+        dmMutex::HMutex                 m_Mutex;    // lock m_Messages and m_Buffer
         uint64_t                        m_ConnectTimeout;
         uint8_t                         m_Key[16];
         const char*                     m_Protocol;
         const char*                     m_CustomHeaders;
         State                           m_State;
+        State                           m_PreviousState;
         char*                           m_Buffer;
         int                             m_BufferSize;
         uint32_t                        m_BufferCapacity;

@@ -3,6 +3,8 @@
 #include <dmsdk/dlib/http_client.h>
 #include <ctype.h> // tolower
 
+#if !defined(__EMSCRIPTEN__)
+
 namespace dmWebsocket
 {
 
@@ -102,22 +104,10 @@ Result SendClientHandshake(WebsocketConnection* conn)
         return SetStatus(conn, RESULT_HANDSHAKE_FAILED, "Connection not ready for sending data: %s", dmSocket::ResultToString(sr));
     }
 
-// In emscripten, the sockets are actually already websockets, so no handshake necessary
-#if defined(__EMSCRIPTEN__)
-    return RESULT_OK;
-#else
     return SendClientHandshakeHeaders(conn);
-#endif
 }
 
 
-#if defined(__EMSCRIPTEN__)
-Result ReceiveHeaders(WebsocketConnection* conn)
-{
-    return RESULT_OK;
-}
-
-#else
 Result ReceiveHeaders(WebsocketConnection* conn)
 {
     dmSocket::Result sr = WaitForSocket(conn, dmSocket::SELECTOR_KIND_READ, SOCKET_WAIT_TIMEOUT);
@@ -125,7 +115,7 @@ Result ReceiveHeaders(WebsocketConnection* conn)
     {
         if (dmSocket::RESULT_WOULDBLOCK == sr)
         {
-            DebugLog(2, "Waiting for socket to be available for reading");
+            DebugLog(dmWebsocket::DEBUG_VERBOSE, "Waiting for socket to be available for reading");
             return RESULT_WOULDBLOCK;
         }
 
@@ -169,7 +159,6 @@ Result ReceiveHeaders(WebsocketConnection* conn)
 
     return RESULT_WOULDBLOCK;
 }
-#endif
 
 static void HandleVersion(void* user_data, int major, int minor, int status, const char* status_str)
 {
@@ -207,13 +196,13 @@ bool ValidateSecretKey(WebsocketConnection* conn, const char* server_key)
     dmCrypt::Base64Encode(conn->m_Key, sizeof(conn->m_Key), client_key, &client_key_len);
     client_key[client_key_len] = 0;
 
-    DebugLog(2, "Secret key (base64): %s", client_key);
+    DebugLog(dmWebsocket::DEBUG_VERBOSE, "Secret key (base64): %s", client_key);
 
     memcpy(client_key + client_key_len, RFC_MAGIC, strlen(RFC_MAGIC));
     client_key_len += strlen(RFC_MAGIC);
     client_key[client_key_len] = 0;
 
-    DebugLog(2, "Secret key + RFC_MAGIC: %s", client_key);
+    DebugLog(dmWebsocket::DEBUG_VERBOSE, "Secret key + RFC_MAGIC: %s", client_key);
 
     uint8_t client_key_sha1[20];
     dmCrypt::HashSha1(client_key, client_key_len, client_key_sha1);
@@ -223,19 +212,13 @@ bool ValidateSecretKey(WebsocketConnection* conn, const char* server_key)
     client_key_len = sizeof(client_key);
     dmCrypt::Base64Encode(client_key_sha1, sizeof(client_key_sha1), client_key, &client_key_len);
     client_key[client_key_len] = 0;
-    DebugLog(2, "Client key (base64): %s", client_key);
-    DebugLog(2, "Server key (base64): %s", server_key);
+    DebugLog(dmWebsocket::DEBUG_VERBOSE, "Client key (base64): %s", client_key);
+    DebugLog(dmWebsocket::DEBUG_VERBOSE, "Server key (base64): %s", server_key);
 
     return strcmp(server_key, (const char*)client_key) == 0;
 }
 
 
-#if defined(__EMSCRIPTEN__)
-Result VerifyHeaders(WebsocketConnection* conn)
-{
-    return RESULT_OK;
-}
-#else
 Result VerifyHeaders(WebsocketConnection* conn)
 {
     char* r = conn->m_Buffer;
@@ -289,6 +272,7 @@ Result VerifyHeaders(WebsocketConnection* conn)
     conn->m_HasHandshakeData = conn->m_BufferSize != 0 ? 1 : 0;
     return RESULT_OK;
 }
-#endif
 
 } // namespace
+
+#endif
