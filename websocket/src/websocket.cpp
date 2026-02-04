@@ -395,6 +395,7 @@ static void CreateConnectionWslay(WebsocketConnection* conn)
 static WebsocketConnection* CreateConnection(const char* url)
 {
     WebsocketConnection* conn = new WebsocketConnection;
+    memset(conn, 0, sizeof(WebsocketConnection));
     conn->m_BufferCapacity = g_Websocket.m_BufferSize;
     conn->m_Buffer = (char*)malloc(conn->m_BufferCapacity);
     conn->m_Buffer[0] = 0;
@@ -417,6 +418,7 @@ static WebsocketConnection* CreateConnection(const char* url)
     conn->m_HasHandshakeData = 0;
     conn->m_HandshakeResponse = 0;
     conn->m_ConnectionThread = 0;
+    conn->m_State = STATE_DISCONNECTED;
 
 #if defined(HAVE_WSLAY)
     CreateConnectionWslay(conn);
@@ -794,31 +796,31 @@ Result PushMessage(WebsocketConnection* conn, MessageType type, int length, cons
 {
     DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
     // we should only push messages when in the connected or disconnecting state
-    assert((STATE_CONNECTED == conn->m_State) || (STATE_DISCONNECTING == conn->m_State));
-
-    if (conn->m_Messages.Full())
-        conn->m_Messages.OffsetCapacity(4);
-
-    Message msg;
-    msg.m_Type = (uint32_t)type;
-    msg.m_Length = length;
-    msg.m_Code = code;
-    conn->m_Messages.Push(msg);
-
-    if ((conn->m_BufferSize + length) >= conn->m_BufferCapacity)
+    if ((STATE_CONNECTED == conn->m_State) || (STATE_DISCONNECTING == conn->m_State))
     {
-        conn->m_BufferCapacity = conn->m_BufferSize + length + 1;
-        conn->m_Buffer = (char*)realloc(conn->m_Buffer, conn->m_BufferCapacity);
+        if (conn->m_Messages.Full())
+            conn->m_Messages.OffsetCapacity(4);
+
+        Message msg;
+        msg.m_Type = (uint32_t)type;
+        msg.m_Length = length;
+        msg.m_Code = code;
+        conn->m_Messages.Push(msg);
+
+        if ((conn->m_BufferSize + length) >= conn->m_BufferCapacity)
+        {
+            conn->m_BufferCapacity = conn->m_BufferSize + length + 1;
+            conn->m_Buffer = (char*)realloc(conn->m_Buffer, conn->m_BufferCapacity);
+        }
+        // append to the end of the buffer
+        memcpy(conn->m_Buffer + conn->m_BufferSize, buffer, length);
+
+        conn->m_BufferSize += length;
+        conn->m_Buffer[conn->m_BufferCapacity-1] = 0;
+
+        // Instead of printing from the incoming buffer, we print from our own, to make sure it looks ok
+        DebugPrint(2, __FUNCTION__, conn->m_Buffer+conn->m_BufferSize-length, length);
     }
-    // append to the end of the buffer
-    memcpy(conn->m_Buffer + conn->m_BufferSize, buffer, length);
-
-    conn->m_BufferSize += length;
-    conn->m_Buffer[conn->m_BufferCapacity-1] = 0;
-
-    // Instead of printing from the incoming buffer, we print from our own, to make sure it looks ok
-    DebugPrint(2, __FUNCTION__, conn->m_Buffer+conn->m_BufferSize-length, length);
-
     return dmWebsocket::RESULT_OK;
 }
 
