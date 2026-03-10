@@ -501,7 +501,7 @@ static int LuaConnect(lua_State* L)
     }
 
     WebsocketConnection* conn = CreateConnection(url);
-    conn->m_ConnectTimeout = dmTime::GetTime() + timeout * 1000;
+    conn->m_ConnectTimeout = dmTime::GetMonotonicTime() + timeout * 1000;
     conn->m_CustomHeaders = custom_headers ? strdup(custom_headers) : 0;
     conn->m_Protocol = protocol ? strdup(protocol) : 0;
 
