@@ -435,45 +435,49 @@ static void DestroyConnection(WebsocketConnection* conn)
 {
     {
         DM_MUTEX_SCOPED_LOCK(conn->m_Mutex);
-        conn->m_State = STATE_DISCONNECTED;
-
-#if defined(HAVE_WSLAY)
-        if (conn->m_Ctx)
-            WSL_Exit(conn->m_Ctx);
-#endif
-
-        free((void*)conn->m_CustomHeaders);
-        free((void*)conn->m_Protocol);
-
-        if (conn->m_Callback)
-            dmScript::DestroyCallback(conn->m_Callback);
-
-#if defined(__EMSCRIPTEN__)
-        if (conn->m_WS)
-        {
-            emscripten_websocket_delete(conn->m_WS);
-        }
-#else
-        if (conn->m_Connection)
-            dmConnectionPool::Close(g_Websocket.m_Pool, conn->m_Connection);
-#endif
-
-        if (conn->m_HandshakeResponse)
-            delete conn->m_HandshakeResponse;
-
-        free((void*)conn->m_Buffer);
+        SetState(conn, STATE_DISCONNECTED);
     }
 
+    // Join before freeeing any resources the worker thread may still be accessing
     if (conn->m_ConnectionThread)
     {
         dmThread::Join(conn->m_ConnectionThread);
         conn->m_ConnectionThread = 0;
     }
 
+    if (conn->m_Callback)
+        dmScript::DestroyCallback(conn->m_Callback);
+
+    free((void*)conn->m_CustomHeaders);
+    free((void*)conn->m_Protocol);
+
+    if (conn->m_HandshakeResponse)
+        delete conn->m_HandshakeResponse;
+
+#if defined(__EMSCRIPTEN__)
+    if (conn->m_WS)
+    {
+        emscripten_websocket_delete(conn->m_WS);
+    }
+#else
+    if (conn->m_Connection)
+        dmConnectionPool::Close(g_Websocket.m_Pool, conn->m_Connection);
+#endif
+
+    free((void*)conn->m_Buffer);
+
+#if defined(HAVE_WSLAY)
+    if (conn->m_Ctx)
+    {
+        WSL_Exit(conn->m_Ctx);
+        conn->m_Ctx = 0;
+    }
+#endif
+
     dmMutex::Delete(conn->m_Mutex);
 
-    delete conn;
     DebugLog(dmWebsocket::DEBUG_VERBOSE, "DestroyConnection: %p", conn);
+    delete conn;
 }
 
 
