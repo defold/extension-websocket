@@ -438,7 +438,7 @@ static void DestroyConnection(WebsocketConnection* conn)
         SetState(conn, STATE_DISCONNECTED);
     }
 
-    // Join before freeeing any resources the worker thread may still be accessing
+    // Join before freeing any resources the worker thread may still be accessing
     if (conn->m_ConnectionThread)
     {
         dmThread::Join(conn->m_ConnectionThread);
