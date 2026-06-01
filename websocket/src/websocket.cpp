@@ -445,6 +445,14 @@ static void DestroyConnection(WebsocketConnection* conn)
         conn->m_ConnectionThread = 0;
     }
 
+#if defined(HAVE_WSLAY)
+    if (conn->m_Ctx)
+    {
+        WSL_Exit(conn->m_Ctx);
+        conn->m_Ctx = 0;
+    }
+#endif
+
     free((void*)conn->m_CustomHeaders);
     free((void*)conn->m_Protocol);
 
@@ -465,14 +473,6 @@ static void DestroyConnection(WebsocketConnection* conn)
         delete conn->m_HandshakeResponse;
 
     free((void*)conn->m_Buffer);
-
-#if defined(HAVE_WSLAY)
-    if (conn->m_Ctx)
-    {
-        WSL_Exit(conn->m_Ctx);
-        conn->m_Ctx = 0;
-    }
-#endif
 
     dmMutex::Delete(conn->m_Mutex);
 
