@@ -59,7 +59,7 @@ int WSL_Poll(wslay_event_context_ptr ctx)
 {
     int r = 0;
     if ((r = wslay_event_recv(ctx)) != 0 || (r = wslay_event_send(ctx)) != 0) {
-        dmLogError("Websocket poll error: %s", WSL_ResultToString(r));
+        dmLogInfo("Websocket poll error: %s", WSL_ResultToString(r)); // expected during intentional disconnect
     }
     return r;
 }
