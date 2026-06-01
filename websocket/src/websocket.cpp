@@ -445,14 +445,11 @@ static void DestroyConnection(WebsocketConnection* conn)
         conn->m_ConnectionThread = 0;
     }
 
-    if (conn->m_Callback)
-        dmScript::DestroyCallback(conn->m_Callback);
-
     free((void*)conn->m_CustomHeaders);
     free((void*)conn->m_Protocol);
 
-    if (conn->m_HandshakeResponse)
-        delete conn->m_HandshakeResponse;
+    if (conn->m_Callback)
+        dmScript::DestroyCallback(conn->m_Callback);
 
 #if defined(__EMSCRIPTEN__)
     if (conn->m_WS)
@@ -463,6 +460,9 @@ static void DestroyConnection(WebsocketConnection* conn)
     if (conn->m_Connection)
         dmConnectionPool::Close(g_Websocket.m_Pool, conn->m_Connection);
 #endif
+
+    if (conn->m_HandshakeResponse)
+        delete conn->m_HandshakeResponse;
 
     free((void*)conn->m_Buffer);
 
