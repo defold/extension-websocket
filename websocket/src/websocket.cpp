@@ -420,6 +420,11 @@ static WebsocketConnection* CreateConnection(const char* url)
     conn->m_ConnectionThread = 0;
     conn->m_State = STATE_DISCONNECTED;
 
+    return conn;
+}
+
+static void StartConnection(WebsocketConnection* conn)
+{
 #if defined(HAVE_WSLAY)
     CreateConnectionWslay(conn);
 #endif
@@ -427,8 +432,6 @@ static WebsocketConnection* CreateConnection(const char* url)
 #if defined(__EMSCRIPTEN__)
     CreateConnectionEmscripten(conn);
 #endif
-
-    return conn;
 }
 
 static void DestroyConnection(WebsocketConnection* conn)
@@ -514,6 +517,10 @@ static int LuaConnect(lua_State* L)
     if (g_Websocket.m_Connections.Full())
         g_Websocket.m_Connections.OffsetCapacity(2);
     g_Websocket.m_Connections.Push(conn);
+
+    // The platform implementation may consume the connection fields immediately,
+    // so start it only after the connection is fully initialized and registered.
+    StartConnection(conn);
 
     lua_pushlightuserdata(L, conn);
     return 1;
